@@ -1,0 +1,26 @@
+# Render.com blueprint.
+#
+# Create the service from this file, then set SESSION_SECRET in the Render
+# dashboard. The persistent disk is what keeps the schedule across deploys —
+# without it every deploy starts from an empty database.
+services:
+  - type: web
+    name: jhll-field-scheduler
+    runtime: node
+    plan: starter
+    buildCommand: npm install && npm run seed
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /data
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: TRUST_PROXY_HOPS
+        value: "1"
+    disk:
+      name: jhll-data
+      mountPath: /data
+      sizeGB: 1

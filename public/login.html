@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin Sign In — Jackson Holbrook Little League</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="auth-page">
+<main class="auth-card">
+  <div class="auth-head">
+    <div class="brand-logo-fallback" id="auth-logo">JH</div>
+    <h1 id="auth-title">Admin Sign In</h1>
+    <p>Jackson Holbrook Little League</p>
+  </div>
+
+  <form class="auth-body" id="login-form" novalidate>
+    <div id="error-slot"></div>
+
+    <div class="field">
+      <label class="lbl" for="username">Username</label>
+      <input type="text" id="username" name="username" autocomplete="username" required autofocus>
+    </div>
+
+    <div class="field">
+      <label class="lbl" for="password">Password</label>
+      <input type="password" id="password" name="password" autocomplete="current-password" required>
+    </div>
+
+    <button class="btn btn-primary btn-lg btn-block" type="submit" id="submit-btn">Sign In</button>
+  </form>
+
+  <div class="auth-foot">
+    <a href="/">&#8249; Back to the public schedule</a>
+  </div>
+</main>
+
+<div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+<script src="/js/common.js"></script>
+<script src="/js/login.js"></script>
+</body>
+</html>

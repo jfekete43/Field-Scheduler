@@ -1,0 +1,294 @@
+'use strict';
+
+/**
+ * Smoke tests for the scheduling rules.
+ *
+ *   npm test
+ *
+ * Runs against a throwaway database in a temp directory, so it never touches
+ * the league's real schedule.
+ */
+
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+// Point the data layer at a scratch directory BEFORE requiring it.
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'jhll-test-'));
+process.env.DATA_DIR = TMP;
+
+const { db } = require('../src/db');
+const schedule = require('../src/schedule');
+const auth = require('../src/auth');
+const { buildCalendar, wallTimeToUtc } = require('../src/ics');
+
+let passed = 0;
+let failed = 0;
+
+function check(name, condition, detail) {
+  if (condition) {
+    passed += 1;
+    console.log(`  ok    ${name}`);
+  } else {
+    failed += 1;
+    console.log(`  FAIL  ${name}${detail ? ` — ${detail}` : ''}`);
+  }
+}
+
+function throws(name, fn, expectedFragment) {
+  try {
+    fn();
+    check(name, false, 'expected an error but none was thrown');
+  } catch (err) {
+    const matched = !expectedFragment || err.message.includes(expectedFragment);
+    check(name, matched, matched ? '' : `message was "${err.message}"`);
+  }
+}
+
+function section(title) {
+  console.log(`\n${title}`);
+}
+
+/* ---------------------------------------------------------------- */
+
+section('Seed data');
+
+// Minimal fixture mirroring the real league layout.
+const locationId = db
+  .prepare("INSERT INTO locations (slug, name, address, maps_query) VALUES ('holbrook','Holbrook','','') RETURNING id")
+  .get().id;
+const otherLocationId = db
+  .prepare("INSERT INTO locations (slug, name, address, maps_query) VALUES ('527','527','','') RETURNING id")
+  .get().id;
+
+const mkField = (loc, slug, name, kind = 'baseball') =>
+  db
+    .prepare('INSERT INTO fields (location_id, slug, name, kind) VALUES (?, ?, ?, ?) RETURNING id')
+    .get(loc, slug, name, kind).id;
+
+const farm = mkField(locationId, 'farm', 'Farm');
+const holbrookMajors = mkField(locationId, 'majors', 'Majors');
+const cages = mkField(locationId, 'indoor-cages', 'Indoor Cages', 'cage');
+const route527Majors = mkField(otherLocationId, 'majors', 'Majors');
+
+check('two locations can each have a field named Majors', holbrookMajors !== route527Majors);
+
+/* ---------------------------------------------------------------- */
+
+section('Double-booking protection');
+
+const base = {
+  fieldId: farm,
+  eventDate: '2026-05-02',
+  startTime: '10:00',
+  endTime: '12:00',
+  eventType: 'game',
+  homeTeam: 'Reds',
+  awayTeam: 'Cubs',
+};
+
+const first = schedule.createEvent(base, null);
+check('an event can be created', first && first.id > 0);
+
+throws(
+  'an overlapping event on the same field is refused',
+  () => schedule.createEvent({ ...base, startTime: '11:00', endTime: '13:00' }, null),
+  'already booked'
+);
+
+const touching = schedule.createEvent({ ...base, startTime: '12:00', endTime: '14:00' }, null);
+check('an event starting exactly when another ends is allowed', !!touching);
+
+const sameTimeOtherField = schedule.createEvent({ ...base, fieldId: route527Majors }, null);
+check('the same time on a different field is allowed', !!sameTimeOtherField);
+
+const forced = schedule.createEvent(
+  { ...base, startTime: '11:00', endTime: '13:00' },
+  null,
+  { allowConflict: true }
+);
+check('an overlap can be forced deliberately', !!forced);
+
+// A canceled event must not block the slot.
+schedule.updateEvent(forced.id, { ...base, startTime: '11:00', endTime: '13:00', status: 'canceled' }, null, {
+  allowConflict: true,
+});
+const afterCancel = schedule.findConflicts({
+  field_id: farm,
+  event_date: '2026-05-02',
+  start_time: '11:00',
+  end_time: '11:30',
+});
+check('a canceled event no longer blocks its slot', afterCancel.every((c) => c.id !== forced.id));
+
+// Editing an event must not conflict with itself.
+const edited = schedule.updateEvent(first.id, { ...base, startTime: '10:30' }, null);
+check('an event can be edited without conflicting with itself', edited.startTime === '10:30');
+
+/* ---------------------------------------------------------------- */
+
+section('Input validation');
+
+throws('an end time before the start is refused', () =>
+  schedule.createEvent({ ...base, fieldId: cages, startTime: '14:00', endTime: '13:00' }, null), 'end time');
+
+throws('a zero-length event is refused', () =>
+  schedule.createEvent({ ...base, fieldId: cages, startTime: '14:00', endTime: '14:00' }, null), 'end time');
+
+throws('a date that does not exist is refused', () =>
+  schedule.createEvent({ ...base, fieldId: cages, eventDate: '2026-02-30' }, null), 'valid date');
+
+throws('a malformed date is refused', () =>
+  schedule.createEvent({ ...base, fieldId: cages, eventDate: 'tomorrow' }, null), 'valid date');
+
+throws('an out-of-range time is refused', () =>
+  schedule.createEvent({ ...base, fieldId: cages, startTime: '25:00', endTime: '26:00' }, null), 'start time');
+
+throws('an unknown event type is refused', () =>
+  schedule.createEvent({ ...base, fieldId: cages, eventType: 'whatever' }, null), 'event type');
+
+throws('an unknown field is refused', () =>
+  schedule.createEvent({ ...base, fieldId: 999999 }, null), 'no longer exists');
+
+/* ---------------------------------------------------------------- */
+
+section('Repeating series');
+
+const series = schedule.createSeries(
+  {
+    fieldId: cages,
+    eventDate: '2026-05-04',
+    startTime: '18:00',
+    endTime: '19:00',
+    eventType: 'cage',
+    division: 'AAA',
+    repeatCount: 6,
+    repeatEveryDays: 7,
+  },
+  null
+);
+check('six weekly sessions are created', series.created.length === 6);
+check(
+  'each falls a week apart',
+  series.created.map((e) => e.date).join(',') ===
+    '2026-05-04,2026-05-11,2026-05-18,2026-05-25,2026-06-01,2026-06-08'
+);
+check('they share one series id', new Set(series.created.map((e) => e.seriesId)).size === 1);
+
+// A series crossing a month boundary and a leap day.
+const leap = schedule.createSeries(
+  { fieldId: holbrookMajors, eventDate: '2028-02-26', startTime: '09:00', endTime: '10:00', repeatCount: 3 },
+  null
+);
+check(
+  'a series spans a leap-year February correctly',
+  leap.created.map((e) => e.date).join(',') === '2028-02-26,2028-03-04,2028-03-11'
+);
+
+throws('an absurd repeat count is refused', () =>
+  schedule.createSeries({ ...base, fieldId: cages, repeatCount: 500 }, null), 'Repeat count');
+
+// Deleting from a date onward keeps the earlier dates.
+const removed = schedule.deleteSeries(series.seriesId, { fromDate: '2026-05-18' });
+check('deleting a series from a date removes only later dates', removed === 4);
+check(
+  'the earlier dates survive',
+  schedule.listEvents({ from: '2026-05-01', to: '2026-06-30' }).filter((e) => e.seriesId === series.seriesId).length === 2
+);
+
+/* ---------------------------------------------------------------- */
+
+section('Calendar feed and daylight saving');
+
+// New York is UTC-4 in summer (EDT) and UTC-5 in winter (EST).
+check(
+  'a summer time converts at EDT (-4)',
+  wallTimeToUtc('2026-05-02', '10:00', 'America/New_York').toISOString() === '2026-05-02T14:00:00.000Z'
+);
+check(
+  'a winter time converts at EST (-5)',
+  wallTimeToUtc('2026-01-10', '10:00', 'America/New_York').toISOString() === '2026-01-10T15:00:00.000Z'
+);
+check(
+  'the evening before the spring-forward change is still EST',
+  wallTimeToUtc('2026-03-07', '20:00', 'America/New_York').toISOString() === '2026-03-08T01:00:00.000Z'
+);
+check(
+  'the afternoon after the spring-forward change is EDT',
+  wallTimeToUtc('2026-03-08', '14:00', 'America/New_York').toISOString() === '2026-03-08T18:00:00.000Z'
+);
+
+const ics = buildCalendar(schedule.listEvents({ from: '2026-01-01', to: '2026-12-31' }), {
+  calendarName: 'JHLL Schedule',
+  timeZone: 'America/New_York',
+});
+const lines = ics.split('\r\n');
+check('the feed is wrapped in a VCALENDAR', lines[0] === 'BEGIN:VCALENDAR' && ics.trimEnd().endsWith('END:VCALENDAR'));
+check('every line uses CRLF endings', ics.split('\n').every((l) => l === '' || l.endsWith('\r')));
+check('no line exceeds the 75-octet limit', lines.every((l) => Buffer.byteLength(l, 'utf8') <= 75));
+
+// Text with commas, semicolons and newlines must be escaped, not truncated.
+const trickyField = mkField(locationId, 'tricky', 'Tricky; Field, One');
+const tricky = schedule.createEvent(
+  {
+    fieldId: trickyField,
+    eventDate: '2026-05-09',
+    startTime: '09:00',
+    endTime: '10:00',
+    eventType: 'game',
+    title: 'Semi; colon, comma\nand a newline',
+  },
+  null
+);
+const trickyIcs = buildCalendar([schedule.getEvent(tricky.id)], {
+  calendarName: 'x',
+  timeZone: 'America/New_York',
+});
+check('special characters are escaped in the feed', trickyIcs.includes('Semi\; colon\\, comma\\nand a newline'));
+check('escaping does not break line folding', trickyIcs.split('\r\n').every((l) => Buffer.byteLength(l, 'utf8') <= 75));
+
+/* ---------------------------------------------------------------- */
+
+section('Filtering');
+
+check('filtering by field works', schedule.listEvents({ fieldId: cages }).every((e) => e.fieldId === cages));
+check('filtering by location works', schedule.listEvents({ locationId: otherLocationId }).every((e) => e.locationId === otherLocationId));
+check('filtering by type works', schedule.listEvents({ eventType: 'cage' }).every((e) => e.eventType === 'cage'));
+check('searching by team name works', schedule.listEvents({ search: 'Reds' }).length > 0);
+check('a date window excludes outside dates', schedule.listEvents({ from: '2026-05-01', to: '2026-05-31' }).every((e) => e.date >= '2026-05-01' && e.date <= '2026-05-31'));
+check("a search for a quote character doesn't break the query", Array.isArray(schedule.listEvents({ search: "'; DROP TABLE events; --" })));
+check('the events table survived that search', db.prepare('SELECT COUNT(*) AS n FROM events').get().n > 0);
+
+/* ---------------------------------------------------------------- */
+
+section('Accounts');
+
+throws('a short password is refused', () => auth.createUser({ username: 'coach', password: 'short1' }), 'at least 10');
+throws('a password with no digit is refused', () => auth.createUser({ username: 'coach', password: 'abcdefghijk' }), 'number');
+throws('an invalid username is refused', () => auth.createUser({ username: 'a b', password: 'GoodPass123' }), 'Username');
+
+const user = auth.createUser({ username: 'coach', password: 'GoodPass123', displayName: 'Coach' });
+check('an account can be created', !!user);
+check('the password is hashed, not stored', !user.password_hash.includes('GoodPass123'));
+check('a correct password signs in', !!auth.verifyLogin('coach', 'GoodPass123'));
+check('the username is case-insensitive', !!auth.verifyLogin('COACH', 'GoodPass123'));
+check('a wrong password is rejected', auth.verifyLogin('coach', 'WrongPass123') === null);
+check('an unknown user is rejected', auth.verifyLogin('nobody', 'GoodPass123') === null);
+
+throws('a duplicate username is refused', () => auth.createUser({ username: 'Coach', password: 'GoodPass123' }), 'already taken');
+
+db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(user.id);
+check('a disabled account cannot sign in', auth.verifyLogin('coach', 'GoodPass123') === null);
+
+/* ---------------------------------------------------------------- */
+
+console.log(`\n${passed} passed, ${failed} failed\n`);
+
+try {
+  db.close();
+  fs.rmSync(TMP, { recursive: true, force: true });
+} catch {
+  /* best effort */
+}
+
+process.exit(failed ? 1 : 0);

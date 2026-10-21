@@ -1,0 +1,37 @@
+# Fly.io configuration.
+#
+#   fly launch --no-deploy
+#   fly volumes create jhll_data --size 1
+#   fly secrets set SESSION_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+#   fly deploy
+#
+# The volume is what keeps the schedule across deploys.
+app = "jhll-field-scheduler"
+primary_region = "ewr"
+
+[build]
+  builder = "heroku/buildpacks:20"
+
+[env]
+  NODE_ENV = "production"
+  DATA_DIR = "/data"
+  PORT = "3000"
+  TRUST_PROXY_HOPS = "1"
+
+[mounts]
+  source = "jhll_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/healthz"

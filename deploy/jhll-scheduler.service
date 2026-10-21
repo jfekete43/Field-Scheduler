@@ -1,0 +1,38 @@
+# systemd unit for running the scheduler on your own server.
+#
+#   sudo cp deploy/jhll-scheduler.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now jhll-scheduler
+#
+# Edit User, WorkingDirectory and SESSION_SECRET before enabling it.
+# Put nginx or Caddy in front to terminate HTTPS.
+
+[Unit]
+Description=Jackson Holbrook Little League Field Scheduler
+After=network.target
+
+[Service]
+Type=simple
+User=jhll
+WorkingDirectory=/opt/jhll-scheduler
+ExecStart=/usr/bin/node src/server.js
+Restart=always
+RestartSec=5
+
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=DATA_DIR=/opt/jhll-scheduler/data
+Environment=TRUST_PROXY_HOPS=1
+# Generate with:
+#   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+Environment=SESSION_SECRET=CHANGE_ME_TO_A_LONG_RANDOM_STRING
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/jhll-scheduler/data
+
+[Install]
+WantedBy=multi-user.target

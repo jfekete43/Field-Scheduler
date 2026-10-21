@@ -1,0 +1,28 @@
+# Example nginx reverse proxy with HTTPS (certificates from certbot).
+# Copy into /etc/nginx/sites-available/ and symlink into sites-enabled/.
+
+server {
+    listen 80;
+    server_name schedule.example.org;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name schedule.example.org;
+
+    ssl_certificate     /etc/letsencrypt/live/schedule.example.org/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/schedule.example.org/privkey.pem;
+
+    # Field map and logo uploads are capped at 6 MB by the app.
+    client_max_body_size 8M;
+
+    location / {
+        proxy_pass         http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+}

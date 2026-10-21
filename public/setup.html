@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Create the First Admin — Jackson Holbrook Little League</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="auth-page">
+<main class="auth-card">
+  <div class="auth-head">
+    <div class="brand-logo-fallback">JH</div>
+    <h1>Create the First Admin</h1>
+    <p>This is a one-time step. Once an account exists, this page is closed off and new admins are added from inside the console.</p>
+  </div>
+
+  <form class="auth-body" id="setup-form" novalidate>
+    <div id="error-slot"></div>
+
+    <div class="field">
+      <label class="lbl" for="displayName">Your name</label>
+      <input type="text" id="displayName" name="displayName" autocomplete="name" placeholder="e.g. Jim Fekete">
+    </div>
+
+    <div class="field">
+      <label class="lbl" for="username">Username</label>
+      <input type="text" id="username" name="username" autocomplete="username" required
+             placeholder="letters, numbers, . _ -">
+    </div>
+
+    <div class="field">
+      <label class="lbl" for="password">Password</label>
+      <input type="password" id="password" name="password" autocomplete="new-password" required>
+      <p class="hint">At least 10 characters, including a letter and a number.</p>
+    </div>
+
+    <div class="field">
+      <label class="lbl" for="confirm">Confirm password</label>
+      <input type="password" id="confirm" name="confirm" autocomplete="new-password" required>
+    </div>
+
+    <button class="btn btn-primary btn-lg btn-block" type="submit" id="submit-btn">Create Account &amp; Sign In</button>
+  </form>
+
+  <div class="auth-foot">
+    <a href="/">&#8249; Back to the public schedule</a>
+  </div>
+</main>
+
+<div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+<script src="/js/common.js"></script>
+<script src="/js/login.js"></script>
+</body>
+</html>

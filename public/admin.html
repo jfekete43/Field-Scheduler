@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin Console — Jackson Holbrook Little League</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="/admin">
+      <div id="brand-logo-slot"><div class="brand-logo-fallback" id="brand-fallback">JH</div></div>
+      <div class="brand-text">
+        <div class="brand-name" id="brand-name">Jackson Holbrook Little League</div>
+        <div class="brand-sub">Admin Console</div>
+      </div>
+    </a>
+    <div class="header-actions">
+      <span style="font-size:13.5px;color:#c3d3ea" id="who"></span>
+      <a class="btn btn-ghost-light btn-sm" href="/" target="_blank" rel="noopener">View Public Site</a>
+      <button class="btn btn-ghost-light btn-sm" type="button" id="btn-my-password">My Password</button>
+      <button class="btn btn-ghost-light btn-sm" type="button" id="btn-logout">Sign Out</button>
+    </div>
+  </div>
+</header>
+
+<nav class="admin-tabs" role="tablist" aria-label="Admin sections">
+  <button type="button" role="tab" data-tab="schedule"  aria-selected="true">Schedule</button>
+  <button type="button" role="tab" data-tab="locations" aria-selected="false">Locations &amp; Maps</button>
+  <button type="button" role="tab" data-tab="branding"  aria-selected="false">Branding</button>
+  <button type="button" role="tab" data-tab="admins"    aria-selected="false">Admins</button>
+  <button type="button" role="tab" data-tab="activity"  aria-selected="false">Activity</button>
+</nav>
+
+<main>
+  <div class="wrap">
+
+    <!-- ============ SCHEDULE ============ -->
+    <section id="tab-schedule" role="tabpanel">
+      <div class="stat-row" id="stat-row"></div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Schedule</h2>
+          <button class="btn btn-primary" type="button" id="btn-new-event">+ Add Event</button>
+          <button class="btn" type="button" id="btn-rainout">Rain Out a Day</button>
+        </div>
+
+        <div class="filters" style="margin-bottom:14px">
+          <div class="field">
+            <label class="lbl" for="a-from">From</label>
+            <input type="date" id="a-from">
+          </div>
+          <div class="field">
+            <label class="lbl" for="a-to">To</label>
+            <input type="date" id="a-to">
+          </div>
+          <div class="field">
+            <label class="lbl" for="a-location">Location</label>
+            <select id="a-location"><option value="">All locations</option></select>
+          </div>
+          <div class="field">
+            <label class="lbl" for="a-field">Field</label>
+            <select id="a-field"><option value="">All fields</option></select>
+          </div>
+          <div class="field">
+            <label class="lbl" for="a-type">Type</label>
+            <select id="a-type"><option value="">All types</option></select>
+          </div>
+          <div class="field field--wide">
+            <label class="lbl" for="a-search">Search</label>
+            <input type="search" id="a-search" placeholder="Team, division or note" autocomplete="off">
+          </div>
+          <button class="btn btn-sm" type="button" id="btn-a-reset">Reset</button>
+        </div>
+
+        <div id="admin-schedule-root"></div>
+      </div>
+    </section>
+
+    <!-- ============ LOCATIONS ============ -->
+    <section id="tab-locations" role="tabpanel" hidden>
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Locations &amp; Fields</h2>
+          <p>Edit addresses so the Directions buttons point to the right place, upload a field map for each site, and label the fields on it.</p>
+          <button class="btn" type="button" id="btn-new-location">+ Add Location</button>
+        </div>
+        <div id="locations-root"></div>
+      </div>
+    </section>
+
+    <!-- ============ BRANDING ============ -->
+    <section id="tab-branding" role="tabpanel" hidden>
+      <div class="panel">
+        <div class="panel-head">
+          <h2>League Branding</h2>
+          <p>The name, logo and season label shown across the public schedule.</p>
+        </div>
+        <form id="branding-form">
+          <div class="form-grid">
+            <div class="field span-2">
+              <label class="lbl" for="s-league-name">League name</label>
+              <input type="text" id="s-league-name" maxlength="120">
+            </div>
+            <div class="field">
+              <label class="lbl" for="s-league-short">Short name</label>
+              <input type="text" id="s-league-short" maxlength="24" placeholder="JHLL">
+            </div>
+            <div class="field">
+              <label class="lbl" for="s-season">Season label</label>
+              <input type="text" id="s-season" maxlength="60" placeholder="Spring 2026">
+            </div>
+            <div class="field">
+              <label class="lbl" for="s-timezone">Timezone</label>
+              <input type="text" id="s-timezone" placeholder="America/New_York">
+              <p class="hint">Used for calendar subscriptions.</p>
+            </div>
+            <div class="field">
+              <label class="lbl" for="s-contact">Contact email</label>
+              <input type="email" id="s-contact" maxlength="120" placeholder="info@example.org">
+            </div>
+          </div>
+          <div style="margin-top:14px">
+            <button class="btn btn-primary" type="submit">Save Branding</button>
+          </div>
+        </form>
+
+        <hr style="border:0;border-top:1px solid var(--line-soft);margin:22px 0">
+
+        <h3 style="font-size:15px;margin-bottom:9px">League Logo</h3>
+        <div class="file-row" id="logo-row"></div>
+        <p class="hint" style="margin-top:7px">PNG, JPG, WEBP, GIF or SVG up to 6&nbsp;MB. A square image works best.</p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Announcement Banner</h2>
+          <p>Shows at the top of the public schedule. Leave the message empty to hide it.</p>
+        </div>
+        <form id="announcement-form">
+          <div class="form-grid">
+            <div class="field span-all">
+              <label class="lbl" for="s-announcement">Message</label>
+              <textarea id="s-announcement" maxlength="500" placeholder="e.g. All games at Justice are canceled Saturday due to field conditions."></textarea>
+            </div>
+            <div class="field">
+              <label class="lbl" for="s-announcement-level">Style</label>
+              <select id="s-announcement-level">
+                <option value="info">Information (blue)</option>
+                <option value="warning">Heads up (amber)</option>
+                <option value="alert">Important (red)</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-top:14px">
+            <button class="btn btn-primary" type="submit">Save Announcement</button>
+            <button class="btn" type="button" id="btn-clear-announcement">Clear Banner</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- ============ ADMINS ============ -->
+    <section id="tab-admins" role="tabpanel" hidden>
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Admin Accounts</h2>
+          <p>Anyone with an account here can edit the schedule. The public site never requires a login.</p>
+          <button class="btn btn-primary" type="button" id="btn-new-admin">+ Add Admin</button>
+        </div>
+        <div id="admins-root"></div>
+      </div>
+    </section>
+
+    <!-- ============ ACTIVITY ============ -->
+    <section id="tab-activity" role="tabpanel" hidden>
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Recent Activity</h2>
+          <p>A record of schedule and account changes, newest first.</p>
+          <button class="btn btn-sm" type="button" id="btn-refresh-audit">Refresh</button>
+        </div>
+        <div id="activity-root"></div>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<!-- ============ Event editor ============ -->
+<dialog class="modal" id="event-editor" aria-labelledby="event-editor-title">
+  <form id="event-form">
+    <div class="modal-head">
+      <h2 id="event-editor-title">Add Event</h2>
+      <button class="modal-close" type="button" data-close aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="event-form-error"></div>
+
+      <div class="form-grid">
+        <div class="field span-2">
+          <label class="lbl" for="e-field">Location &amp; field <span aria-hidden="true">*</span></label>
+          <select id="e-field" required></select>
+        </div>
+        <div class="field">
+          <label class="lbl" for="e-type">Type <span aria-hidden="true">*</span></label>
+          <select id="e-type" required></select>
+        </div>
+        <div class="field">
+          <label class="lbl" for="e-date">Date <span aria-hidden="true">*</span></label>
+          <input type="date" id="e-date" required>
+        </div>
+        <div class="field">
+          <label class="lbl" for="e-start">Start <span aria-hidden="true">*</span></label>
+          <input type="time" id="e-start" required step="300">
+        </div>
+        <div class="field">
+          <label class="lbl" for="e-end">End <span aria-hidden="true">*</span></label>
+          <input type="time" id="e-end" required step="300">
+        </div>
+        <div class="field">
+          <label class="lbl" for="e-division">Division</label>
+          <input type="text" id="e-division" list="division-list" maxlength="60" placeholder="e.g. Majors">
+          <datalist id="division-list"></datalist>
+        </div>
+        <div class="field">
+          <label class="lbl" for="e-home">Home team</label>
+          <input type="text" id="e-home" list="team-list" maxlength="80">
+        </div>
+        <div class="field">
+          <label class="lbl" for="e-away">Away team</label>
+          <input type="text" id="e-away" list="team-list" maxlength="80">
+          <datalist id="team-list"></datalist>
+        </div>
+        <div class="field span-2">
+          <label class="lbl" for="e-title">Title <span class="inline-note">(optional — overrides the team names)</span></label>
+          <input type="text" id="e-title" maxlength="120" placeholder="e.g. Opening Day Ceremony">
+        </div>
+        <div class="field">
+          <label class="lbl" for="e-status">Status</label>
+          <select id="e-status"></select>
+        </div>
+        <div class="field span-all">
+          <label class="lbl" for="e-notes">Notes</label>
+          <textarea id="e-notes" maxlength="1000" placeholder="Anything parents and coaches should know."></textarea>
+        </div>
+      </div>
+
+      <fieldset id="repeat-box" style="margin-top:16px;border:1px solid var(--line);border-radius:var(--radius);padding:13px">
+        <legend class="lbl" style="padding:0 6px">Repeat</legend>
+        <div class="form-grid">
+          <div class="field">
+            <label class="lbl" for="e-repeat-count">Number of weeks</label>
+            <input type="number" id="e-repeat-count" min="1" max="60" value="1">
+            <p class="hint">1 creates a single event.</p>
+          </div>
+          <div class="field">
+            <label class="lbl" for="e-repeat-every">Repeat every</label>
+            <select id="e-repeat-every">
+              <option value="7">Week</option>
+              <option value="14">2 weeks</option>
+              <option value="1">Day</option>
+            </select>
+          </div>
+        </div>
+      </fieldset>
+
+      <div id="conflict-slot" style="margin-top:14px"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-danger" type="button" id="btn-delete-event" hidden>Delete</button>
+      <span class="spacer"></span>
+      <button class="btn" type="button" data-close>Cancel</button>
+      <button class="btn btn-primary" type="submit" id="btn-save-event">Save Event</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ============ Field map labeler ============ -->
+<dialog class="modal modal-wide" id="map-editor" aria-labelledby="map-editor-title">
+  <div class="modal-head">
+    <h2 id="map-editor-title">Label the Field Map</h2>
+    <button class="modal-close" type="button" data-close aria-label="Close">&times;</button>
+  </div>
+  <div class="modal-body">
+    <p class="hint" style="margin-top:0">
+      Click anywhere on the map to drop a label, then type what it is. Drag a label to move it.
+    </p>
+    <div id="map-editor-stage-wrap" style="text-align:center"></div>
+    <div class="pin-list" id="pin-list"></div>
+  </div>
+  <div class="modal-foot">
+    <span class="inline-note" id="pin-count"></span>
+    <span class="spacer"></span>
+    <button class="btn" type="button" data-close>Cancel</button>
+    <button class="btn btn-primary" type="button" id="btn-save-pins">Save Labels</button>
+  </div>
+</dialog>
+
+<!-- ============ Password dialogs ============ -->
+<dialog class="modal" id="password-modal" aria-labelledby="password-modal-title">
+  <form id="password-form">
+    <div class="modal-head">
+      <h2 id="password-modal-title">Change My Password</h2>
+      <button class="modal-close" type="button" data-close aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="password-form-error"></div>
+      <div class="field">
+        <label class="lbl" for="p-current">Current password</label>
+        <input type="password" id="p-current" autocomplete="current-password" required>
+      </div>
+      <div class="field" style="margin-top:12px">
+        <label class="lbl" for="p-new">New password</label>
+        <input type="password" id="p-new" autocomplete="new-password" required>
+        <p class="hint">At least 10 characters, including a letter and a number.</p>
+      </div>
+      <div class="field" style="margin-top:12px">
+        <label class="lbl" for="p-confirm">Confirm new password</label>
+        <input type="password" id="p-confirm" autocomplete="new-password" required>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" type="button" data-close>Cancel</button>
+      <button class="btn btn-primary" type="submit">Update Password</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="modal" id="admin-modal" aria-labelledby="admin-modal-title">
+  <form id="admin-form">
+    <div class="modal-head">
+      <h2 id="admin-modal-title">Add Admin</h2>
+      <button class="modal-close" type="button" data-close aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="admin-form-error"></div>
+      <div class="form-grid">
+        <div class="field">
+          <label class="lbl" for="u-display">Name</label>
+          <input type="text" id="u-display" maxlength="80">
+        </div>
+        <div class="field">
+          <label class="lbl" for="u-username">Username <span aria-hidden="true">*</span></label>
+          <input type="text" id="u-username" required maxlength="40" autocomplete="off">
+        </div>
+        <div class="field">
+          <label class="lbl" for="u-password">Temporary password <span aria-hidden="true">*</span></label>
+          <input type="text" id="u-password" required autocomplete="off">
+          <p class="hint">Share it with them and ask them to change it after signing in.</p>
+        </div>
+        <div class="field">
+          <label class="lbl" for="u-role">Role</label>
+          <select id="u-role">
+            <option value="admin">Admin — can edit the schedule</option>
+            <option value="owner">Owner — can also manage accounts</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" type="button" id="btn-suggest-password">Suggest a Password</button>
+      <span class="spacer"></span>
+      <button class="btn" type="button" data-close>Cancel</button>
+      <button class="btn btn-primary" type="submit">Create Account</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="modal" id="confirm-modal" aria-labelledby="confirm-modal-title">
+  <div class="modal-head">
+    <h2 id="confirm-modal-title">Please Confirm</h2>
+    <button class="modal-close" type="button" data-close aria-label="Close">&times;</button>
+  </div>
+  <div class="modal-body" id="confirm-modal-body"></div>
+  <div class="modal-foot">
+    <button class="btn" type="button" data-close>Cancel</button>
+    <button class="btn btn-danger" type="button" id="btn-confirm-yes">Yes, Continue</button>
+  </div>
+</dialog>
+
+<dialog class="modal" id="rainout-modal" aria-labelledby="rainout-modal-title">
+  <form id="rainout-form">
+    <div class="modal-head">
+      <h2 id="rainout-modal-title">Rain Out a Day</h2>
+      <button class="modal-close" type="button" data-close aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="hint" style="margin-top:0">
+        Marks every event on that date with the status you pick. Events stay on the schedule
+        so families can see what was called off.
+      </p>
+      <div class="form-grid">
+        <div class="field">
+          <label class="lbl" for="r-date">Date <span aria-hidden="true">*</span></label>
+          <input type="date" id="r-date" required>
+        </div>
+        <div class="field">
+          <label class="lbl" for="r-location">Location</label>
+          <select id="r-location"><option value="">Every location</option></select>
+        </div>
+        <div class="field">
+          <label class="lbl" for="r-status">New status</label>
+          <select id="r-status"></select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" type="button" data-close>Cancel</button>
+      <button class="btn btn-primary" type="submit">Apply</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+
+<script src="/js/common.js"></script>
+<script src="/js/admin.js"></script>
+</body>
+</html>

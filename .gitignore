@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Runtime data: the SQLite database, uploaded logos and field maps,
+# and the generated session secret. Never commit these.
+data/
+
+# Logs and OS cruft
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Local environment overrides
+.env
+.env.local
