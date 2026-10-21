@@ -8,8 +8,11 @@ services:
     name: jhll-field-scheduler
     runtime: node
     plan: starter
-    buildCommand: npm install && npm run seed
-    startCommand: npm start
+    buildCommand: npm install
+    # Seeding runs at start, not at build: the persistent disk is only mounted
+    # at runtime, so a build-time seed would write to a throwaway filesystem.
+    # The seed is insert-only, so repeating it never overwrites your edits.
+    startCommand: npm run seed && npm start
     healthCheckPath: /healthz
     envVars:
       - key: NODE_ENV

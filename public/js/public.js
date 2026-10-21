@@ -18,7 +18,6 @@ const UPCOMING_DAYS = 60;
 
 async function init() {
   wireModals();
-  wireControls();
 
   try {
     const boot = await api.get('/api/bootstrap');
@@ -29,6 +28,9 @@ async function init() {
     populateFilterOptions();
     renderLocations();
     applyStateFromUrl();
+    // Wired only once the data is in: clicking a view or filter before then
+    // would run against a null state.boot.
+    wireControls();
     await loadEvents();
   } catch (err) {
     $('#schedule-root').replaceChildren(
@@ -156,11 +158,24 @@ function applyStateFromUrl() {
   const date = params.get('date');
   state.anchor = /^\d{4}-\d{2}-\d{2}$/.test(date || '') ? date : state.today;
 
+  // Ids from the URL are checked against the real data. An id that no longer
+  // exists would otherwise stay in state and filter the schedule while the
+  // controls still read "All locations".
+  const knownLocation = (id) => state.boot.locations.some((l) => String(l.id) === id);
+  const knownField = (id) => state.boot.locations.some((l) => l.fields.some((f) => String(f.id) === id));
+  const knownType = (value) => state.boot.eventTypes.some((t) => t.value === value);
+  const knownDivision = (value) => state.boot.divisions.includes(value);
+
+  const rawLocation = params.get('location') || '';
+  const rawField = params.get('field') || '';
+  const rawType = params.get('type') || '';
+  const rawDivision = params.get('division') || '';
+
   state.filters = {
-    location: params.get('location') || '',
-    field: params.get('field') || '',
-    type: params.get('type') || '',
-    division: params.get('division') || '',
+    location: knownLocation(rawLocation) ? rawLocation : '',
+    field: knownField(rawField) ? rawField : '',
+    type: knownType(rawType) ? rawType : '',
+    division: knownDivision(rawDivision) ? rawDivision : '',
     q: params.get('q') || '',
   };
 

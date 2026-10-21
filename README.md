@@ -58,6 +58,11 @@ npm run seed         # load the four locations and their fields (safe to re-run)
 npm start            # start the server
 ```
 
+`npm run seed` only ever *adds* what is missing. Once you have renamed a field or reordered a
+location, re-running it leaves your edits alone, so it is safe on every deploy.
+
+Run `npm test` any time to check the scheduling rules still behave.
+
 Then open **http://localhost:3000**.
 
 The first time, go to **http://localhost:3000/admin** and it will walk you through creating the
@@ -101,6 +106,13 @@ can tell the difference between "canceled" and "never scheduled".
 
 To call off a single event instead, edit it and set its **Status**.
 
+### Taking a field out of use
+
+Under **Locations & Maps**, untick **Shown** for that field and save. It disappears from the public
+schedule along with any events booked on it, and from the list of fields you can book. You still see
+it in the admin console, greyed out, so you can tick it back on whenever you want. Nothing is
+deleted.
+
 ### Field maps
 
 **Locations & Maps → Upload Field Map.** Any photo, drawing or screenshot works.
@@ -139,10 +151,15 @@ Set these environment variables in production:
 | `SESSION_SECRET` | A long random string. Generate with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `PORT`           | Port to listen on (default `3000`; most hosts set this for you) |
 | `DATA_DIR`       | Where the database and uploads live (default `./data`) |
-| `TRUST_PROXY_HOPS` | Number of proxies in front of the app (default `1`) |
+| `TRUST_PROXY_HOPS` | Number of proxies in front of the app. **Defaults to `0`** (trust nothing). Set it to `1` behind nginx, Render or Fly — the included configs already do. |
 
 **Serve it over HTTPS.** Passwords and session cookies go over this connection, and secure cookies
 will not be sent over plain HTTP.
+
+**Set `TRUST_PROXY_HOPS` to match your setup.** It defaults to `0`, meaning the app reads the real
+socket address and ignores `X-Forwarded-For`. Behind a reverse proxy set it to `1` or the app sees
+every visitor as the proxy. Setting it higher than the number of proxies you actually run lets a
+visitor forge their own IP address, which is what the login lockout is keyed on.
 
 ### Render / Railway / Fly.io
 
@@ -210,7 +227,9 @@ No build step, no bundler. Edit a file, restart, done.
 - Sessions are HTTP-only cookies, `SameSite=Lax`, marked `Secure` in production, kept in SQLite
   so a restart does not sign everyone out
 - Every write is protected by a CSRF token compared in constant time
-- Repeated failed logins lock that username/IP pair for 10 minutes
+- Repeated failed logins lock that username/IP pair for 10 minutes, and a second counter locks the
+  account for 15 minutes regardless of source address, so guesses cannot be spread across many IPs
+- Changing or resetting a password signs that account out everywhere else
 - A strict Content-Security-Policy; uploads are served with `nosniff` and their own locked-down CSP
 - Uploads are limited to images, capped at 6 MB, and stored under random filenames
 - Every admin action is written to the activity log

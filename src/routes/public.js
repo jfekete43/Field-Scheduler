@@ -49,6 +49,7 @@ function locationsWithFields({ includeInactive = false } = {}) {
 /** Everything the front end needs to render in one request. */
 router.get('/bootstrap', (req, res) => {
   const settings = getSettings();
+  const signedIn = !!req.session?.user?.id;
   res.json({
     settings: {
       leagueName: settings.league_name,
@@ -60,14 +61,14 @@ router.get('/bootstrap', (req, res) => {
       contactEmail: settings.contact_email,
       seasonLabel: settings.season_label,
     },
-    locations: locationsWithFields(),
+    locations: locationsWithFields({ includeInactive: signedIn }),
     eventTypes: schedule.EVENT_TYPES,
     statuses: schedule.STATUSES,
     fieldKinds: schedule.FIELD_KINDS,
     divisions: schedule.listDivisions(),
     teams: schedule.listTeams(),
     today: new Date().toLocaleDateString('en-CA', { timeZone: settings.timezone }),
-    signedIn: !!req.session?.user?.id,
+    signedIn,
   });
 });
 
@@ -81,6 +82,8 @@ router.get('/events', (req, res) => {
     division: req.query.division,
     search: req.query.q,
     limit: req.query.limit,
+    // Admins keep seeing events on hidden fields so they can fix them.
+    includeInactive: !!req.session?.user?.id,
   });
   res.json({ events, count: events.length });
 });

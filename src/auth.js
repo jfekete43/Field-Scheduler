@@ -6,7 +6,8 @@ const session = require('express-session');
 const { db, logAction } = require('./db');
 
 const BCRYPT_ROUNDS = 12;
-const SESSION_TTL_MS = 1000 * 60 * 60 * 12; // 12 hours
+const SESSION_TTL_MS = 1000 * 60 * 60 * 12;            // idle timeout
+const SESSION_ABSOLUTE_MS = 1000 * 60 * 60 * 24 * 7;  // hard cap, even if in constant use
 
 /* ---------------------------------------------------------------- *
  * SQLite-backed session store (keeps logins alive across restarts)
@@ -145,17 +146,39 @@ function validatePassword(password) {
   return null;
 }
 
-function setPassword(userId, password) {
+function setPassword(userId, password, { keepSid = null } = {}) {
   const pwError = validatePassword(password);
   if (pwError) throw Object.assign(new Error(pwError), { status: 400 });
   db.prepare('UPDATE users SET password_hash = ?, must_change = 0 WHERE id = ?').run(
     hashPassword(password),
     userId
   );
+  // Anyone already signed in as this account is signed out, so a reset
+  // actually takes effect everywhere.
+  destroyUserSessions(userId, keepSid);
+}
+
+/** Removes every stored session belonging to a user, optionally sparing one. */
+function destroyUserSessions(userId, keepSid = null) {
+  try {
+    return db
+      .prepare(
+        `DELETE FROM sessions
+          WHERE json_extract(data, '$.user.id') = ?
+            AND (? IS NULL OR sid != ?)`
+      )
+      .run(userId, keepSid, keepSid).changes;
+  } catch {
+    return 0;
+  }
 }
 
 function countActiveAdmins() {
   return db.prepare('SELECT COUNT(*) AS n FROM users WHERE active = 1').get().n;
+}
+
+function countOwners() {
+  return db.prepare("SELECT COUNT(*) AS n FROM users WHERE active = 1 AND role = 'owner'").get().n;
 }
 
 /* ---------------------------------------------------------------- *
@@ -166,15 +189,29 @@ const attempts = new Map();
 const MAX_ATTEMPTS = 8;
 const LOCKOUT_MS = 1000 * 60 * 10;
 
+// A second counter keyed on the username alone. The per-IP bucket above is the
+// normal case; this one still bites when an attacker spreads guesses across
+// many source addresses (or forges X-Forwarded-For).
+const userAttempts = new Map();
+const MAX_USER_ATTEMPTS = 24;
+const USER_LOCKOUT_MS = 1000 * 60 * 15;
+
 function throttleKey(username, ip) {
   return `${String(username || '').toLowerCase()}|${ip}`;
 }
 
 function checkThrottle(username, ip) {
+  const now = Date.now();
+  const name = String(username || '').toLowerCase();
+
+  const userEntry = userAttempts.get(name);
+  if (userEntry?.lockedUntil > now) {
+    return Math.ceil((userEntry.lockedUntil - now) / 1000);
+  }
+
   const entry = attempts.get(throttleKey(username, ip));
-  if (!entry) return null;
-  if (entry.lockedUntil && entry.lockedUntil > Date.now()) {
-    return Math.ceil((entry.lockedUntil - Date.now()) / 1000);
+  if (entry?.lockedUntil > now) {
+    return Math.ceil((entry.lockedUntil - now) / 1000);
   }
   return null;
 }
@@ -188,10 +225,20 @@ function recordFailure(username, ip) {
     entry.count = 0;
   }
   attempts.set(key, entry);
+
+  const name = String(username || '').toLowerCase();
+  const userEntry = userAttempts.get(name) || { count: 0, lockedUntil: 0 };
+  userEntry.count += 1;
+  if (userEntry.count >= MAX_USER_ATTEMPTS) {
+    userEntry.lockedUntil = Date.now() + USER_LOCKOUT_MS;
+    userEntry.count = 0;
+  }
+  userAttempts.set(name, userEntry);
 }
 
 function clearFailures(username, ip) {
   attempts.delete(throttleKey(username, ip));
+  userAttempts.delete(String(username || '').toLowerCase());
 }
 
 setInterval(() => {
@@ -199,17 +246,25 @@ setInterval(() => {
   for (const [key, entry] of attempts) {
     if (!entry.lockedUntil || entry.lockedUntil < now - LOCKOUT_MS) attempts.delete(key);
   }
+  for (const [key, entry] of userAttempts) {
+    if (!entry.lockedUntil || entry.lockedUntil < now - USER_LOCKOUT_MS) userAttempts.delete(key);
+  }
 }, 1000 * 60 * 15).unref();
 
 /* ---------------------------------------------------------------- *
  * Authentication
  * ---------------------------------------------------------------- */
 
+// A real bcrypt hash at the same cost factor. Comparing against a malformed
+// string returns almost instantly, which would make a missing username
+// measurably faster than a wrong password and let accounts be enumerated.
+const DUMMY_HASH = bcrypt.hashSync('password-that-is-never-valid', BCRYPT_ROUNDS);
+
 function verifyLogin(username, password) {
   const row = findUserByUsername(username);
-  // Always run a hash comparison so a missing user and a wrong password
-  // take a similar amount of time.
-  const hash = row ? row.password_hash : '$2a$12$0000000000000000000000000000000000000000000000000000';
+  // Always run a full hash comparison so a missing user and a wrong password
+  // take the same amount of time.
+  const hash = row ? row.password_hash : DUMMY_HASH;
   const ok = bcrypt.compareSync(String(password || ''), hash);
   if (!row || !ok || !row.active) return null;
   db.prepare("UPDATE users SET last_login_at = datetime('now') WHERE id = ?").run(row.id);
@@ -218,7 +273,11 @@ function verifyLogin(username, password) {
 
 function requireAuth(req, res, next) {
   if (req.session?.user?.id) {
-    const fresh = db.prepare('SELECT * FROM users WHERE id = ? AND active = 1').get(req.session.user.id);
+    const startedAt = Number(req.session.startedAt) || 0;
+    const expired = startedAt > 0 && Date.now() - startedAt > SESSION_ABSOLUTE_MS;
+    const fresh = expired
+      ? null
+      : db.prepare('SELECT * FROM users WHERE id = ? AND active = 1').get(req.session.user.id);
     if (fresh) {
       req.user = fresh;
       return next();
@@ -259,6 +318,8 @@ function requireCsrf(req, res, next) {
 module.exports = {
   SqliteStore,
   SESSION_TTL_MS,
+  SESSION_ABSOLUTE_MS,
+  destroyUserSessions,
   hashPassword,
   validatePassword,
   createUser,
@@ -266,6 +327,7 @@ module.exports = {
   findUserByUsername,
   publicUser,
   countActiveAdmins,
+  countOwners,
   verifyLogin,
   requireAuth,
   csrfToken,

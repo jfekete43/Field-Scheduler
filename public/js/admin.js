@@ -10,6 +10,7 @@ const admin = {
   filters: { from: '', to: '', location: '', field: '', type: '', q: '' },
   editing: null,     // event being edited, or null when adding
   mapEditor: null,   // { location, pins, selectedIndex }
+  requestId: 0,      // guards against a slow earlier fetch landing last
 };
 
 /* ================================================================
@@ -240,6 +241,9 @@ function wireSchedule() {
     $('#a-location').value = '';
     $('#a-type').value = '';
     $('#a-search').value = '';
+    // Cleared before the rebuild, which otherwise restores the previous
+    // selection and leaves a filter applied that the controls do not show.
+    $('#a-field').value = '';
     rebuildAdminFieldOptions();
     loadEvents();
   });
@@ -295,12 +299,16 @@ async function loadEvents() {
   root.replaceChildren(h('div', { class: 'skeleton' },
     h('div', { class: 'skeleton-row' }), h('div', { class: 'skeleton-row' })));
 
+  const requestId = ++admin.requestId;
+
   try {
     const data = await api.get(`/api/events?${params}`);
+    if (requestId !== admin.requestId) return; // a newer request already answered
     admin.events = data.events;
     renderStats();
     renderAdminSchedule();
   } catch (err) {
+    if (requestId !== admin.requestId) return;
     root.replaceChildren(h('div', { class: 'empty' }, h('h3', {}, 'Could not load events'), h('p', {}, err.message)));
   }
 }
@@ -878,9 +886,19 @@ function renderMapEditor() {
       const up = () => {
         marker.removeEventListener('pointermove', move);
         marker.removeEventListener('pointerup', up);
+        marker.removeEventListener('pointercancel', up);
+        try {
+          marker.releasePointerCapture(event.pointerId);
+        } catch {
+          /* already released */
+        }
       };
       marker.addEventListener('pointermove', move);
       marker.addEventListener('pointerup', up, { once: true });
+      // Without this a cancelled drag (a touch interrupted by a scroll or an
+      // incoming call) leaves pointermove attached and the label keeps
+      // following the cursor afterwards.
+      marker.addEventListener('pointercancel', up, { once: true });
     });
 
     stage.append(marker);
@@ -911,7 +929,16 @@ function renderMapEditor() {
         h('input', {
           type: 'color', value: pin.color, style: 'width:44px;padding:2px;height:34px',
           'aria-label': 'Label color',
-          onInput: (e) => { pin.color = e.target.value; renderMapEditor(); },
+          // Repainted in place: a full re-render on every input event would
+          // tear down the colour picker the admin is still dragging in.
+          onInput: (e) => {
+            pin.color = e.target.value;
+            const marker = $(`.map-pin[data-index="${index}"]`, stage);
+            if (!marker) return;
+            marker.querySelector('.map-pin-label').style.background = pin.color;
+            marker.querySelector('.map-pin-stem').style.background = pin.color;
+            marker.querySelector('.map-pin-dot').style.background = pin.color;
+          },
         }),
         h('button', {
           class: 'btn btn-sm btn-danger', type: 'button',
@@ -1113,6 +1140,11 @@ async function loadUsers() {
 
 function renderUsers() {
   const root = clear($('#admins-root'));
+  // Account management is owner-only on the server; hide the controls rather
+  // than offer buttons that come back 403.
+  const isOwner = admin.me.role === 'owner';
+  $('#btn-new-admin').hidden = !isOwner;
+
   const table = h('table', { class: 'data' },
     h('thead', {}, h('tr', {},
       h('th', {}, 'Name'), h('th', {}, 'Username'), h('th', {}, 'Role'),
@@ -1126,23 +1158,30 @@ function renderUsers() {
         h('td', {}, h('span', { class: `state-pill${user.active ? '' : ' off'}` }, user.active ? 'Active' : 'Disabled')),
         h('td', { class: 'inline-note' }, formatTimestamp(user.lastLoginAt)),
         h('td', { class: 'actions' },
-          h('button', { class: 'btn btn-sm', type: 'button', onClick: () => resetUserPassword(user) }, 'Reset Password'),
-          ' ',
-          isMe ? null : h('button', {
-            class: 'btn btn-sm', type: 'button',
-            onClick: () => toggleUser(user),
-          }, user.active ? 'Disable' : 'Enable'),
-          ' ',
-          isMe ? null : h('button', {
-            class: 'btn btn-sm btn-danger', type: 'button',
-            onClick: () => deleteUser(user),
-          }, 'Delete')));
+          !isOwner
+            ? h('span', { class: 'inline-note' }, isMe ? 'Use "My Password" above' : '\u2014')
+            : [
+              h('button', { class: 'btn btn-sm', type: 'button', onClick: () => resetUserPassword(user) }, 'Reset Password'),
+              ' ',
+              isMe ? null : h('button', {
+                class: 'btn btn-sm', type: 'button',
+                onClick: () => toggleUser(user),
+              }, user.active ? 'Disable' : 'Enable'),
+              ' ',
+              isMe ? null : h('button', {
+                class: 'btn btn-sm btn-danger', type: 'button',
+                onClick: () => deleteUser(user),
+              }, 'Delete'),
+            ]));
     })));
 
   root.append(h('div', { class: 'table-wrap' }, table));
   root.append(h('p', { class: 'hint', style: 'margin-top:10px' },
-    'Owners can manage accounts and the schedule. Admins can manage the schedule. ' +
-    'At least one active account always has to remain.'));
+    isOwner
+      ? 'Owners can manage accounts and the schedule. Admins can manage the schedule. '
+        + 'At least one active admin and one owner always have to remain.'
+      : 'Only an owner can add or change accounts. You can change your own password '
+        + 'with "My Password" at the top of the page.'));
 }
 
 async function resetUserPassword(user) {

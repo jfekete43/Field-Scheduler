@@ -59,9 +59,11 @@ function stampUtc(date) {
 function escapeText(value) {
   return String(value ?? '')
     .replace(/\\/g, '\\\\')
-    .replace(/;/g, '\;')
+    .replace(/;/g, '\\;')
     .replace(/,/g, '\\,')
-    .replace(/\r?\n/g, '\\n');
+    // Any CR, LF or CRLF becomes a literal \n escape. A bare CR left in place
+    // would start a new content line and let text break out of the field.
+    .replace(/\r\n|\r|\n/g, '\\n');
 }
 
 /** Folds lines at 75 octets as the spec requires. */

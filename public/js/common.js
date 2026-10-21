@@ -80,8 +80,13 @@ function formatDateMedium(dateStr) {
 function formatRangeLabel(fromStr, toStr) {
   const from = parseDate(fromStr);
   const to = parseDate(toStr);
-  const sameMonth = from.getMonth() === to.getMonth() && from.getFullYear() === to.getFullYear();
-  const left = `${MONTH_SHORT[from.getMonth()]} ${from.getDate()}`;
+  const sameYear = from.getFullYear() === to.getFullYear();
+  const sameMonth = sameYear && from.getMonth() === to.getMonth();
+  // A week spanning New Year has to name both years, or late December reads as
+  // though it belonged to the following one.
+  const left = sameYear
+    ? `${MONTH_SHORT[from.getMonth()]} ${from.getDate()}`
+    : `${MONTH_SHORT[from.getMonth()]} ${from.getDate()}, ${from.getFullYear()}`;
   const right = sameMonth
     ? `${to.getDate()}`
     : `${MONTH_SHORT[to.getMonth()]} ${to.getDate()}`;

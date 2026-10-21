@@ -86,6 +86,26 @@ function truthy(value) {
   return value === true || value === 'true' || value === 1 || value === '1' || value === 'on';
 }
 
+/** Keeps the existing order when the box was left blank. */
+function sortOrderOr(value, fallback) {
+  if (value === undefined || value === null || String(value).trim() === '') return fallback;
+  const n = Number(value);
+  return Number.isInteger(n) ? n : fallback;
+}
+
+/**
+ * Account management is owner-only. Without this any admin could reset the
+ * owner's password or delete every other account and take over the site.
+ */
+function requireOwner(req, _res, next) {
+  if (req.user?.role !== 'owner') {
+    return next(
+      Object.assign(new Error('Only an owner can manage admin accounts.'), { status: 403 })
+    );
+  }
+  return next();
+}
+
 function allowConflictFlag(req) {
   return truthy(req.body?.allowConflict ?? req.query?.allowConflict);
 }
@@ -152,7 +172,12 @@ router.delete(
   wrap((req, res) => {
     const seriesId = String(req.params.seriesId || '').slice(0, 64);
     if (!seriesId) throw Object.assign(new Error('Invalid series id.'), { status: 400 });
-    const fromDate = schedule.isRealDate(req.query.from) ? req.query.from : null;
+    // A malformed ?from used to fall back to null, which deletes the whole
+    // series rather than the tail the admin asked for.
+    if (req.query.from !== undefined && !schedule.isRealDate(req.query.from)) {
+      throw Object.assign(new Error('That is not a valid date to delete from.'), { status: 400 });
+    }
+    const fromDate = req.query.from === undefined ? null : req.query.from;
     const count = schedule.deleteSeries(seriesId, { fromDate });
     logAction(req.user, 'delete_series', 'events', seriesId, `removed ${count}${fromDate ? ` from ${fromDate}` : ''}`);
     res.json({ ok: true, removed: count });
@@ -245,7 +270,7 @@ router.put(
       String(req.body.notes ?? existing.notes).trim().slice(0, 500),
       lat,
       lng,
-      Number.isInteger(Number(req.body.sortOrder)) ? Number(req.body.sortOrder) : existing.sort_order,
+      sortOrderOr(req.body.sortOrder, existing.sort_order),
       id
     );
     logAction(req.user, 'update_location', 'locations', id, name);
@@ -280,7 +305,15 @@ router.post(
   '/locations/:id/map',
   upload.single('image'),
   wrap((req, res) => {
-    const id = intParam(req.params.id, 'location id');
+    // multer has already written the file by now, so every rejection path
+    // below has to remove it or it is orphaned on disk forever.
+    let id;
+    try {
+      id = intParam(req.params.id, 'location id');
+    } catch (err) {
+      removeUpload(req.file?.filename);
+      throw err;
+    }
     const existing = db.prepare('SELECT * FROM locations WHERE id = ?').get(id);
     if (!existing) {
       removeUpload(req.file?.filename);
@@ -321,10 +354,22 @@ router.put(
     if (!db.prepare('SELECT 1 FROM locations WHERE id = ?').get(id)) {
       throw Object.assign(new Error('That location no longer exists.'), { status: 404 });
     }
-    const pins = Array.isArray(req.body.pins) ? req.body.pins : [];
+    // Required explicitly. Falling back to [] would wipe every label on this
+    // map if the body ever arrived without the array.
+    if (!Array.isArray(req.body.pins)) {
+      throw Object.assign(new Error('No map labels were submitted.'), { status: 400 });
+    }
+    const pins = req.body.pins;
     if (pins.length > 60) throw Object.assign(new Error('A map can hold at most 60 labels.'), { status: 400 });
 
+    const validFieldIds = new Set(
+      db.prepare('SELECT id FROM fields WHERE location_id = ?').all(id).map((f) => f.id)
+    );
+
     const clean = pins.map((pin) => {
+      if (!pin || typeof pin !== 'object' || Array.isArray(pin)) {
+        throw Object.assign(new Error('That map label is not in a readable form.'), { status: 400 });
+      }
       const label = String(pin.label || '').trim().slice(0, 60);
       if (!label) throw Object.assign(new Error('Every map label needs text.'), { status: 400 });
       const x = Number(pin.x);
@@ -333,8 +378,12 @@ router.put(
         throw Object.assign(new Error('Map labels must sit inside the image.'), { status: 400 });
       }
       const fieldId = pin.fieldId ? Number(pin.fieldId) : null;
+      // A label may only point at a field that belongs to this location,
+      // otherwise the insert fails the foreign key and returns a 500.
+      const linkedFieldId =
+        Number.isInteger(fieldId) && validFieldIds.has(fieldId) ? fieldId : null;
       const color = /^#[0-9a-fA-F]{6}$/.test(String(pin.color || '')) ? pin.color : '#1d4ed8';
-      return { label, x, y, fieldId: Number.isInteger(fieldId) ? fieldId : null, color };
+      return { label, x, y, fieldId: linkedFieldId, color };
     });
 
     db.transaction(() => {
@@ -403,7 +452,7 @@ router.put(
       name,
       kind,
       String(req.body.notes ?? existing.notes).trim().slice(0, 300),
-      Number.isInteger(Number(req.body.sortOrder)) ? Number(req.body.sortOrder) : existing.sort_order,
+      sortOrderOr(req.body.sortOrder, existing.sort_order),
       req.body.active === undefined ? existing.active : truthy(req.body.active) ? 1 : 0,
       id
     );
@@ -532,6 +581,7 @@ router.get(
 
 router.post(
   '/users',
+  requireOwner,
   wrap((req, res) => {
     const created = auth.createUser({
       username: req.body.username,
@@ -546,6 +596,7 @@ router.post(
 
 router.put(
   '/users/:id',
+  requireOwner,
   wrap((req, res) => {
     const id = intParam(req.params.id, 'user id');
     const target = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
@@ -555,8 +606,13 @@ router.put(
     if (!nextActive && target.id === req.user.id) {
       throw Object.assign(new Error('You cannot deactivate your own account.'), { status: 400 });
     }
-    if (!nextActive && auth.countActiveAdmins() <= 1) {
+    // Only a change that actually removes an active admin can strand the site.
+    // Editing an account that is already inactive is always allowed.
+    if (!nextActive && target.active && auth.countActiveAdmins() <= 1) {
       throw Object.assign(new Error('At least one active admin must remain.'), { status: 400 });
+    }
+    if (target.role === 'owner' && req.body.role === 'admin' && auth.countOwners() <= 1) {
+      throw Object.assign(new Error('At least one owner must remain.'), { status: 400 });
     }
 
     db.prepare('UPDATE users SET display_name = ?, role = ?, active = ? WHERE id = ?').run(
@@ -572,11 +628,13 @@ router.put(
 
 router.post(
   '/users/:id/password',
+  requireOwner,
   wrap((req, res) => {
     const id = intParam(req.params.id, 'user id');
     const target = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
     if (!target) throw Object.assign(new Error('That admin no longer exists.'), { status: 404 });
     auth.setPassword(id, req.body.password);
+    // setPassword also signs that account out everywhere.
     logAction(req.user, 'reset_password', 'users', id, target.username);
     res.json({ ok: true });
   })
@@ -584,6 +642,7 @@ router.post(
 
 router.delete(
   '/users/:id',
+  requireOwner,
   wrap((req, res) => {
     const id = intParam(req.params.id, 'user id');
     const target = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
@@ -591,8 +650,12 @@ router.delete(
     if (target.id === req.user.id) {
       throw Object.assign(new Error('You cannot delete your own account.'), { status: 400 });
     }
-    if (auth.countActiveAdmins() <= 1) {
+    // Deleting an already-inactive account never strands the site.
+    if (target.active && auth.countActiveAdmins() <= 1) {
       throw Object.assign(new Error('At least one active admin must remain.'), { status: 400 });
+    }
+    if (target.role === 'owner' && auth.countOwners() <= 1) {
+      throw Object.assign(new Error('At least one owner must remain.'), { status: 400 });
     }
     db.prepare('DELETE FROM users WHERE id = ?').run(id);
     logAction(req.user, 'delete_user', 'users', id, target.username);

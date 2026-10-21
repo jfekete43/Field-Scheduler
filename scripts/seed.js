@@ -2,8 +2,11 @@
 
 /**
  * Seeds the four JHLL locations and their fields.
- * Safe to re-run: existing locations/fields are matched by slug and updated,
- * never duplicated, and admin-entered addresses are left alone.
+ *
+ * Safe to re-run, and deliberately INSERT-ONLY: anything that already exists is
+ * left exactly as it is. Admins rename locations and fields, reorder them and
+ * change their kind from the console, and this script runs on every deploy —
+ * overwriting those rows here would quietly undo their work each time.
  */
 
 const { db, logAction } = require('../src/db');
@@ -74,19 +77,15 @@ const insertLocation = db.prepare(
   `INSERT INTO locations (slug, name, address, maps_query, notes, sort_order)
    VALUES (@slug, @name, @address, @maps_query, @notes, @sort_order)`
 );
-const updateLocationMeta = db.prepare(
-  'UPDATE locations SET name = ?, sort_order = ? WHERE id = ?'
-);
 
 const findField = db.prepare('SELECT * FROM fields WHERE location_id = ? AND slug = ?');
 const insertField = db.prepare(
   `INSERT INTO fields (location_id, slug, name, kind, sort_order)
    VALUES (@location_id, @slug, @name, @kind, @sort_order)`
 );
-const updateField = db.prepare('UPDATE fields SET name = ?, kind = ?, sort_order = ? WHERE id = ?');
 
 let created = 0;
-let updated = 0;
+let skipped = 0;
 
 const run = db.transaction(() => {
   for (const loc of LOCATIONS) {
@@ -104,8 +103,7 @@ const run = db.transaction(() => {
       created += 1;
       console.log(`+ location  ${loc.name}`);
     } else {
-      updateLocationMeta.run(loc.name, loc.sort_order, row.id);
-      updated += 1;
+      skipped += 1;
     }
 
     loc.fields.forEach((field, index) => {
@@ -121,15 +119,14 @@ const run = db.transaction(() => {
         created += 1;
         console.log(`+ field     ${loc.name} / ${field.name}`);
       } else {
-        updateField.run(field.name, field.kind, index + 1, existing.id);
-        updated += 1;
+        skipped += 1;
       }
     });
   }
 });
 
 run();
-logAction(null, 'seed', 'locations', '', `created=${created} updated=${updated}`);
+logAction(null, 'seed', 'locations', '', `created=${created} left_alone=${skipped}`);
 
 const counts = db
   .prepare(
@@ -138,5 +135,5 @@ const counts = db
   )
   .get();
 
-console.log(`\nSeed complete. created=${created} updated=${updated}`);
+console.log(`\nSeed complete. created=${created}, left untouched=${skipped}`);
 console.log(`Totals: ${counts.locations} locations, ${counts.fields} fields.`);

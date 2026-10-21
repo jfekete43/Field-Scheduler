@@ -12,8 +12,17 @@ function clearError() {
 
 function nextUrl() {
   const next = new URLSearchParams(window.location.search).get('next');
-  // Only allow same-site relative paths, never an absolute URL.
-  return next && /^\/(?!\/)/.test(next) ? next : '/admin';
+  if (!next) return '/admin';
+  // Must be a same-site path. Rejecting only a leading "//" is not enough:
+  // browsers normalise backslashes to slashes, so "/\\evil.com" and "/\t//evil.com"
+  // would navigate off-site. Resolve it and confirm the origin is still ours.
+  try {
+    const resolved = new URL(next, window.location.origin);
+    if (resolved.origin !== window.location.origin) return '/admin';
+    return resolved.pathname + resolved.search + resolved.hash;
+  } catch {
+    return '/admin';
+  }
 }
 
 /* ---------------- Sign in ---------------- */

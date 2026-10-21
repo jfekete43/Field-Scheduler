@@ -28,8 +28,17 @@ function resolveSessionSecret() {
   if (process.env.SESSION_SECRET) return process.env.SESSION_SECRET;
   const secretFile = path.join(DATA_DIR, '.session-secret');
   try {
-    return fs.readFileSync(secretFile, 'utf8').trim();
+    const stored = fs.readFileSync(secretFile, 'utf8').trim();
+    // A truncated or empty file (a crash mid-write, a bad restore) would make
+    // express-session throw on every request, taking the public schedule down
+    // too. Regenerate instead.
+    if (stored.length >= 32) return stored;
+    console.warn('[warn] data/.session-secret was empty or too short; regenerating it.');
   } catch {
+    /* fall through to generating a new secret */
+  }
+
+  {
     const generated = crypto.randomBytes(32).toString('hex');
     fs.writeFileSync(secretFile, generated, { mode: 0o600 });
     if (IS_PROD) {
@@ -44,7 +53,20 @@ function resolveSessionSecret() {
 
 const app = express();
 
-app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS) || 1);
+// Number(x) || 1 would turn an explicit 0 back into 1, leaving a directly
+// exposed instance trusting a forged X-Forwarded-For (and so a forged req.ip,
+// which the login throttle is keyed on).
+// Defaults to 0 (trust nothing). With any non-zero value express takes req.ip
+// from a client-supplied X-Forwarded-For, and the login throttle is keyed on
+// req.ip - so a directly exposed instance that trusted a proxy by default would
+// let an attacker mint a fresh attempt budget per request. Set this to the
+// number of proxies you actually run behind; render.yaml, fly.toml and the
+// nginx example all set 1.
+const TRUST_PROXY_HOPS =
+  process.env.TRUST_PROXY_HOPS !== undefined && Number.isFinite(Number(process.env.TRUST_PROXY_HOPS))
+    ? Number(process.env.TRUST_PROXY_HOPS)
+    : 0;
+app.set('trust proxy', TRUST_PROXY_HOPS);
 app.disable('x-powered-by');
 
 app.use(
@@ -157,6 +179,7 @@ app.post('/api/setup', (req, res, next) => {
     req.session.regenerate((err) => {
       if (err) return next(err);
       req.session.user = auth.publicUser(created);
+      req.session.startedAt = Date.now();
       auth.csrfToken(req);
       return req.session.save((saveErr) =>
         saveErr ? next(saveErr) : res.status(201).json({ user: req.session.user, csrfToken: req.session.csrf })
@@ -191,6 +214,7 @@ app.post('/api/auth/login', (req, res, next) => {
   return req.session.regenerate((err) => {
     if (err) return next(err);
     req.session.user = auth.publicUser(row);
+    req.session.startedAt = Date.now();
     auth.csrfToken(req);
     return req.session.save((saveErr) => {
       if (saveErr) return next(saveErr);
@@ -216,7 +240,7 @@ app.post('/api/auth/password', auth.requireAuth, auth.requireCsrf, (req, res, ne
     if (!auth.verifyLogin(req.user.username, current)) {
       return res.status(401).json({ error: 'Your current password is not right.' });
     }
-    auth.setPassword(req.user.id, req.body.newPassword);
+    auth.setPassword(req.user.id, req.body.newPassword, { keepSid: req.sessionID });
     logAction(req.user, 'change_own_password', 'users', req.user.id, '');
     return res.json({ ok: true });
   } catch (err) {
@@ -263,11 +287,17 @@ app.use(
   })
 );
 
+// The HTML is served no-cache while the JS and CSS it loads have no version in
+// their filenames. Caching them for an hour would let a browser pair fresh HTML
+// with a stale script after a deploy, so they are revalidated on each load.
 app.use(
   express.static(PUBLIC_DIR, {
-    maxAge: IS_PROD ? '1h' : 0,
+    etag: true,
+    lastModified: true,
+    maxAge: 0,
     index: false,
     extensions: ['html'],
+    setHeaders: (res) => res.set('Cache-Control', 'no-cache'),
   })
 );
 
@@ -281,12 +311,26 @@ app.use((req, res) => {
 });
 
 app.use((err, _req, res, _next) => {
-  const status = err.status || err.statusCode || 500;
+  // Multer signals upload problems with a code rather than an HTTP status;
+  // they are the caller's fault, not a server fault.
+  const MULTER_MESSAGES = {
+    LIMIT_FILE_SIZE: 'That image is larger than 6 MB.',
+    LIMIT_FILE_COUNT: 'Upload one image at a time.',
+    LIMIT_UNEXPECTED_FILE: 'Unexpected upload field.',
+  };
+  const isUploadError = typeof err.code === 'string' && err.code.startsWith('LIMIT_');
+  const status = err.status || err.statusCode || (isUploadError ? 400 : 500);
+
   if (status >= 500) console.error('[error]', err);
-  const payload = { error: status >= 500 ? 'Something went wrong on the server.' : err.message };
+  const payload = {
+    error: isUploadError
+      ? MULTER_MESSAGES[err.code] || 'That upload was rejected.'
+      : status >= 500
+        ? 'Something went wrong on the server.'
+        : err.message,
+  };
   if (err.conflicts) payload.conflicts = err.conflicts;
   if (err.eventCount !== undefined) payload.eventCount = err.eventCount;
-  if (err.code === 'LIMIT_FILE_SIZE') payload.error = 'That image is larger than 6 MB.';
   res.status(status).json(payload);
 });
 

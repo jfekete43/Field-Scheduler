@@ -45,7 +45,7 @@ function minutesOf(time) {
 }
 
 function isRealDate(dateStr) {
-  if (!DATE_RE.test(dateStr)) return false;
+  if (typeof dateStr !== 'string' || !DATE_RE.test(dateStr)) return false;
   const [y, m, d] = dateStr.split('-').map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));
   return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
@@ -307,15 +307,27 @@ function getEvent(id) {
 /**
  * Public schedule query. All filters are optional.
  */
-function listEvents({ from, to, locationId, fieldId, eventType, division, search, limit } = {}) {
+function listEvents({
+  from, to, locationId, fieldId, eventType, division, search, limit,
+  includeInactive = false,
+} = {}) {
   const where = [];
   const params = {};
 
-  if (from && isRealDate(from)) {
+  // A field marked "not shown" disappears from the public schedule along with
+  // its events. The admin console passes includeInactive so the change stays
+  // reversible and nothing is silently stranded.
+  if (!includeInactive) where.push('f.active = 1');
+
+  // A bad date is rejected rather than ignored: silently dropping the bound
+  // would widen the query to the entire schedule.
+  if (from) {
+    if (!isRealDate(from)) throw badRequest('The "from" date is not a valid date.');
     where.push('e.event_date >= @from');
     params.from = from;
   }
-  if (to && isRealDate(to)) {
+  if (to) {
+    if (!isRealDate(to)) throw badRequest('The "to" date is not a valid date.');
     where.push('e.event_date <= @to');
     params.to = to;
   }
@@ -344,7 +356,9 @@ function listEvents({ from, to, locationId, fieldId, eventType, division, search
   }
 
   const clause = where.length ? ` WHERE ${where.join(' AND ')}` : '';
-  const cap = Math.min(Math.max(Number(limit) || 2000, 1), 5000);
+  // Floored to an integer: this value is interpolated into the LIMIT clause,
+  // and SQLite rejects a fractional one with an error.
+  const cap = Math.min(Math.max(Math.floor(Number(limit)) || 2000, 1), 5000);
 
   return db
     .prepare(

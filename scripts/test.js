@@ -244,8 +244,43 @@ const trickyIcs = buildCalendar([schedule.getEvent(tricky.id)], {
   calendarName: 'x',
   timeZone: 'America/New_York',
 });
-check('special characters are escaped in the feed', trickyIcs.includes('Semi\; colon\\, comma\\nand a newline'));
+// Built from character codes rather than typed escapes: hand-writing the
+// expected string here is exactly how the missing semicolon escape slipped
+// through the first time.
+const BS = String.fromCharCode(92); // a single backslash
+check(
+  'a semicolon is escaped in the feed',
+  trickyIcs.includes(`Semi${BS};`),
+  `got: ${JSON.stringify(trickyIcs.split('\r\n').find((l) => l.startsWith('SUMMARY')))}`
+);
+check('a comma is escaped in the feed', trickyIcs.includes(`colon${BS}, comma`));
+check('a newline becomes a literal \\n', trickyIcs.includes(`${BS}nand a newline`));
 check('escaping does not break line folding', trickyIcs.split('\r\n').every((l) => Buffer.byteLength(l, 'utf8') <= 75));
+
+// A backslash in the source text must itself be doubled.
+const slashy = schedule.createEvent(
+  { fieldId: trickyField, eventDate: '2026-05-09', startTime: '11:00', endTime: '12:00', title: `back${BS}slash` },
+  null
+);
+const slashIcs = buildCalendar([schedule.getEvent(slashy.id)], { calendarName: 'x', timeZone: 'America/New_York' });
+check('a backslash is doubled', slashIcs.includes(`back${BS}${BS}slash`));
+
+// A bare CR must not be able to start a new content line.
+const crEvent = schedule.createEvent(
+  {
+    fieldId: trickyField,
+    eventDate: '2026-05-09',
+    startTime: '13:00',
+    endTime: '14:00',
+    title: `harmless${String.fromCharCode(13)}SUMMARY:injected`,
+  },
+  null
+);
+const crIcs = buildCalendar([schedule.getEvent(crEvent.id)], { calendarName: 'x', timeZone: 'America/New_York' });
+check(
+  'a carriage return cannot inject a calendar line',
+  crIcs.split('\r\n').filter((l) => l.startsWith('SUMMARY')).length === 1
+);
 
 /* ---------------------------------------------------------------- */
 
@@ -279,6 +314,70 @@ throws('a duplicate username is refused', () => auth.createUser({ username: 'Coa
 
 db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(user.id);
 check('a disabled account cannot sign in', auth.verifyLogin('coach', 'GoodPass123') === null);
+
+/* ---------------------------------------------------------------- */
+
+section('Query guards');
+
+check('a fractional limit does not throw', Array.isArray(schedule.listEvents({ limit: 1.5 })));
+check('a non-numeric limit does not throw', Array.isArray(schedule.listEvents({ limit: 'lots' })));
+throws('an impossible from date is rejected, not ignored', () =>
+  schedule.listEvents({ from: '2026-02-30' }), 'not a valid date');
+throws('a malformed to date is rejected, not ignored', () =>
+  schedule.listEvents({ to: 'whenever' }), 'not a valid date');
+
+section('Hiding a field');
+
+const hidden = mkField(locationId, 'hideme', 'Hide Me');
+schedule.createEvent(
+  { fieldId: hidden, eventDate: '2026-06-06', startTime: '10:00', endTime: '11:00' },
+  null
+);
+check('its event is visible while the field is shown', schedule.listEvents({ fieldId: hidden }).length === 1);
+db.prepare('UPDATE fields SET active = 0 WHERE id = ?').run(hidden);
+check('hiding the field hides its events publicly', schedule.listEvents({ fieldId: hidden }).length === 0);
+check(
+  'admins still see them, so the change is reversible',
+  schedule.listEvents({ fieldId: hidden, includeInactive: true }).length === 1
+);
+
+section('Login throttling');
+
+const THROTTLE_USER = 'throttled.user';
+auth.createUser({ username: THROTTLE_USER, password: 'GoodPass123' });
+check('a fresh account is not throttled', auth.checkThrottle(THROTTLE_USER, '10.0.0.1') === null);
+for (let i = 0; i < 8; i += 1) auth.recordFailure(THROTTLE_USER, '10.0.0.1');
+check('repeated failures from one address lock it out', auth.checkThrottle(THROTTLE_USER, '10.0.0.1') > 0);
+check('another address is not locked out yet', auth.checkThrottle(THROTTLE_USER, '10.0.0.2') === null);
+for (let i = 0; i < 24; i += 1) auth.recordFailure(THROTTLE_USER, `10.1.0.${i}`);
+check(
+  'spreading guesses across addresses still locks the account',
+  auth.checkThrottle(THROTTLE_USER, '203.0.113.7') > 0
+);
+auth.clearFailures(THROTTLE_USER, '10.0.0.1');
+check('a successful sign-in clears the lockout', auth.checkThrottle(THROTTLE_USER, '10.0.0.1') === null);
+
+section('Password reset ends other sessions');
+
+const sessionUser = auth.createUser({ username: 'session.user', password: 'GoodPass123' });
+const putSession = (sid, userId) =>
+  db
+    .prepare('INSERT INTO sessions (sid, data, expires_at) VALUES (?, ?, ?)')
+    .run(sid, JSON.stringify({ user: { id: userId } }), Date.now() + 3600000);
+putSession('sid-phone', sessionUser.id);
+putSession('sid-laptop', sessionUser.id);
+putSession('sid-someone-else', 999);
+auth.setPassword(sessionUser.id, 'BrandNewPass456');
+const left = db.prepare('SELECT sid FROM sessions').all().map((r) => r.sid);
+check('their other sessions are signed out', !left.includes('sid-phone') && !left.includes('sid-laptop'));
+check('other people stay signed in', left.includes('sid-someone-else'));
+
+putSession('sid-keep', sessionUser.id);
+putSession('sid-drop', sessionUser.id);
+auth.setPassword(sessionUser.id, 'AnotherPass789', { keepSid: 'sid-keep' });
+const after = db.prepare('SELECT sid FROM sessions').all().map((r) => r.sid);
+check('changing your own password keeps you signed in here', after.includes('sid-keep'));
+check('but ends it on your other devices', !after.includes('sid-drop'));
 
 /* ---------------------------------------------------------------- */
 
