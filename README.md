@@ -48,6 +48,35 @@ booking one never blocks the other, and every screen shows the location next to 
 
 ---
 
+## Trying it out without installing anything
+
+GitHub does not host this app on its own — GitHub Pages only serves static files,
+and this is a Node server with a database. To get a working link straight from
+GitHub, use a **Codespace**, which runs it on a temporary machine and gives you a
+URL you can open on your phone or send to a board member.
+
+1. Open the repository on github.com and switch to the
+   `claude/jhll-scheduling-site-x0uepa` branch (the **Branch** dropdown, above the file list).
+2. Click the green **Code** button → the **Codespaces** tab → **Create codespace on
+   claude/jhll-scheduling-site-x0uepa**.
+3. Wait a minute or two. It installs everything and starts the site for you.
+4. A box pops up in the bottom-right saying the application is running on port 3000.
+   Click **Open in Browser**. If you miss it, open the **PORTS** tab next to the
+   terminal and click the globe icon on port 3000.
+5. The first time, visit `/admin` on that URL and it will walk you through creating
+   your admin account.
+
+The link is private to you by default. To let someone else open it, go to the
+**PORTS** tab, right-click port 3000 → **Port Visibility** → **Public**.
+
+Two things to know: the Codespace shuts down after about 30 minutes of inactivity
+(reopen it from the same Code → Codespaces menu, and your schedule is still there),
+and deleting the Codespace deletes the test data with it. Personal GitHub accounts
+include a monthly allowance of free Codespace hours. When you are ready for a real
+address that stays up, see **Deploying it** below.
+
+---
+
 ## Running it
 
 You need [Node.js](https://nodejs.org) 18.17 or newer.

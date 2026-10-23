@@ -1,0 +1,28 @@
+{
+  "$schema": "https://raw.githubusercontent.com/devcontainers/spec/main/schemas/devContainer.base.schema.json",
+  "name": "JHLL Field Scheduler",
+
+  // Node 22 with build tools already present, so better-sqlite3 installs cleanly.
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm",
+
+  // Runs once when the Codespace is created: install dependencies and load the
+  // four locations and their fields.
+  "postCreateCommand": "npm install && npm run seed",
+
+  // Runs every time you open the Codespace, so the site is already up.
+  "postAttachCommand": "npm start",
+
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": {
+      "label": "Field Scheduler",
+      "onAutoForward": "notify"
+    }
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": ["dbaeumer.vscode-eslint"]
+    }
+  }
+}
