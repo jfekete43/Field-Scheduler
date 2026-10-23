@@ -11,7 +11,25 @@ const admin = {
   editing: null,     // event being edited, or null when adding
   mapEditor: null,   // { location, pins, selectedIndex }
   requestId: 0,      // guards against a slow earlier fetch landing last
+  rainout: { date: '', events: [], selected: new Set(), loading: false, token: 0 },
 };
+
+/**
+ * Which fields a rain-out should tick by default.
+ *
+ * The indoor cages are unaffected by weather, and turf drains long after grass
+ * has given up, so neither is assumed out. Both can still be ticked by hand for
+ * the snow day or the washout that takes everything.
+ */
+function rainDefault(kind) {
+  return kind !== 'cage' && kind !== 'turf';
+}
+
+function rainReason(kind) {
+  if (kind === 'cage') return { label: 'Indoor', className: 'indoor' };
+  if (kind === 'turf') return { label: 'Drains well', className: 'drains' };
+  return null;
+}
 
 /* ================================================================
    Boot
@@ -58,15 +76,11 @@ async function refreshBoot() {
 function populateSelects() {
   const { locations, eventTypes, statuses, divisions, teams } = admin.boot;
 
-  const locationSelects = ['#a-location', '#r-location'];
-  locationSelects.forEach((sel) => {
-    const select = $(sel);
-    const keep = select.value;
-    const allLabel = sel === '#r-location' ? 'Every location' : 'All locations';
-    clear(select).append(h('option', { value: '' }, allLabel));
-    locations.forEach((loc) => select.append(h('option', { value: String(loc.id) }, loc.name)));
-    if (keep) select.value = keep;
-  });
+  const select = $('#a-location');
+  const keep = select.value;
+  clear(select).append(h('option', { value: '' }, 'All locations'));
+  locations.forEach((loc) => select.append(h('option', { value: String(loc.id) }, loc.name)));
+  if (keep) select.value = keep;
 
   rebuildAdminFieldOptions();
 
@@ -98,6 +112,7 @@ function populateSelects() {
       list.forEach((item) => select.append(h('option', { value: item.value }, item.label)));
     });
   $('#r-status').value = 'rain';
+  $('#r-status').addEventListener('change', updateRainoutCount);
 
   const divList = clear($('#division-list'));
   divisions.forEach((div) => divList.append(h('option', { value: div })));
@@ -253,37 +268,182 @@ function wireSchedule() {
   $('#btn-delete-event').addEventListener('click', deleteCurrentEvent);
 
   $('#btn-rainout').addEventListener('click', () => {
-    $('#r-date').value = admin.boot.today;
-    $('#r-location').value = admin.filters.location || '';
+    $('#r-date').value = admin.filters.from || admin.boot.today;
     openModal($('#rainout-modal'));
+    loadRainoutDay();
   });
 
-  $('#rainout-form').addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const date = $('#r-date').value;
-    const locationId = $('#r-location').value;
-    const status = $('#r-status').value;
-    const locName = locationId
-      ? admin.boot.locations.find((l) => String(l.id) === locationId)?.name
-      : 'every location';
-    const ok = await confirmAction({
-      title: 'Apply to every event that day?',
-      message: [
-        `This marks all events on ${formatDateLong(date)} at ${locName} as "${labelFor(admin.boot.statuses, status)}".`,
-        'You can change individual events back afterwards.',
-      ],
-      confirmLabel: 'Apply to All',
-    });
-    if (!ok) return;
-    try {
-      const result = await api.post('/api/admin/events/bulk-status', { date, locationId, status });
-      closeModal($('#rainout-modal'));
-      toast(`${result.updated} event(s) updated.`, 'success');
-      loadEvents();
-    } catch (err) {
-      toast(err.message, 'error');
+  $('#r-date').addEventListener('change', loadRainoutDay);
+
+  $('#r-suggest').addEventListener('click', () => applyRainSelection('suggested'));
+  $('#r-all').addEventListener('click', () => applyRainSelection('all'));
+  $('#r-none').addEventListener('click', () => applyRainSelection('none'));
+
+  $('#rainout-form').addEventListener('submit', submitRainout);
+}
+
+/* ---------------- Rain out a day ---------------- */
+
+async function loadRainoutDay() {
+  const date = $('#r-date').value;
+  const picker = clear($('#rainout-picker'));
+  admin.rainout.date = date;
+
+  if (!date) {
+    picker.append(h('p', { class: 'hint' }, 'Pick a date to see what is scheduled.'));
+    updateRainoutCount();
+    return;
+  }
+
+  picker.append(h('div', { class: 'skeleton' }, h('div', { class: 'skeleton-row' })));
+  const token = ++admin.rainout.token;
+
+  try {
+    const data = await api.get(`/api/events?from=${date}&to=${date}`);
+    if (token !== admin.rainout.token) return; // a newer date already answered
+    admin.rainout.events = data.events;
+    applyRainSelection('suggested');
+  } catch (err) {
+    if (token !== admin.rainout.token) return;
+    clear($('#rainout-picker')).append(h('p', { class: 'form-error' }, err.message));
+  }
+}
+
+/** Ticks a preset, then redraws. */
+function applyRainSelection(mode) {
+  const selected = new Set();
+  for (const event of admin.rainout.events) {
+    if (mode === 'all') selected.add(event.fieldId);
+    else if (mode === 'suggested' && rainDefault(event.fieldKind)) selected.add(event.fieldId);
+  }
+  admin.rainout.selected = selected;
+  renderRainoutPicker();
+}
+
+function renderRainoutPicker() {
+  const picker = clear($('#rainout-picker'));
+  const { events, selected } = admin.rainout;
+
+  if (!events.length) {
+    picker.append(
+      h('div', { class: 'empty', style: 'padding:26px 16px' },
+        h('h3', {}, 'Nothing scheduled that day'),
+        h('p', {}, 'There is nothing to call off on this date.'))
+    );
+    updateRainoutCount();
+    return;
+  }
+
+  // Count the day's events per field.
+  const counts = new Map();
+  for (const event of events) {
+    counts.set(event.fieldId, (counts.get(event.fieldId) || 0) + 1);
+  }
+
+  // Walk the locations and fields in their configured order, so the list reads
+  // the same way as everywhere else rather than in first-game-of-the-day order.
+  const byLocation = admin.boot.locations
+    .map((loc) => ({
+      name: loc.name,
+      fields: new Map(
+        loc.fields
+          .filter((f) => counts.has(f.id))
+          .map((f) => [f.id, { name: f.name, kind: f.kind, count: counts.get(f.id) }])
+      ),
+    }))
+    .filter((loc) => loc.fields.size);
+
+  for (const loc of byLocation) {
+    const fieldIds = [...loc.fields.keys()];
+    const total = [...loc.fields.values()].reduce((sum, f) => sum + f.count, 0);
+    const allOn = fieldIds.every((id) => selected.has(id));
+
+    const block = h('div', { class: 'rain-loc' },
+      h('div', { class: 'rain-loc-head' },
+        loc.name,
+        h('span', { class: 'rain-loc-count' }, total === 1 ? '1 event' : `${total} events`),
+        h('span', { class: 'spacer' }),
+        h('button', {
+          class: 'btn btn-sm', type: 'button',
+          onClick: () => {
+            fieldIds.forEach((id) => (allOn ? selected.delete(id) : selected.add(id)));
+            renderRainoutPicker();
+          },
+        }, allOn ? 'Clear site' : 'Whole site')));
+
+    for (const [fieldId, field] of loc.fields) {
+      const on = selected.has(fieldId);
+      const why = rainReason(field.kind);
+      block.append(
+        h('label', { class: `rain-field${on ? '' : ' is-off'}` },
+          h('input', {
+            type: 'checkbox', checked: on,
+            onChange: (e) => {
+              if (e.target.checked) selected.add(fieldId);
+              else selected.delete(fieldId);
+              renderRainoutPicker();
+            },
+          }),
+          h('span', { class: 'rain-name' }, field.name),
+          h('span', { class: 'rain-count' }, field.count === 1 ? '1 event' : `${field.count} events`),
+          h('span', { class: 'spacer' }),
+          why ? h('span', { class: `rain-why ${why.className}` }, why.label) : null)
+      );
     }
+    picker.append(block);
+  }
+
+  updateRainoutCount();
+}
+
+function updateRainoutCount() {
+  const { events, selected } = admin.rainout;
+  const affected = events.filter((e) => selected.has(e.fieldId)).length;
+  const status = labelFor(admin.boot.statuses, $('#r-status').value);
+
+  $('#rainout-count').textContent = !events.length
+    ? ''
+    : affected === 0
+      ? 'No fields ticked'
+      : `${affected} of ${events.length} event(s) \u2192 ${status}`;
+
+  $('#r-apply').disabled = affected === 0;
+}
+
+async function submitRainout(event) {
+  event.preventDefault();
+  const { date, selected, events } = admin.rainout;
+  const status = $('#r-status').value;
+  const fieldIds = [...selected];
+  const affected = events.filter((e) => selected.has(e.fieldId));
+
+  if (!affected.length) {
+    toast('Tick at least one field.', 'error');
+    return;
+  }
+
+  const spared = events.length - affected.length;
+  const ok = await confirmAction({
+    title: `Mark ${affected.length} event(s) as ${labelFor(admin.boot.statuses, status)}?`,
+    message: [
+      `On ${formatDateLong(date)}.`,
+      spared
+        ? `${spared} event(s) on the fields you left unticked carry on as scheduled.`
+        : 'Every event that day is affected.',
+      'You can change individual events back afterwards.',
+    ],
+    confirmLabel: 'Apply',
   });
+  if (!ok) return;
+
+  try {
+    const result = await api.post('/api/admin/events/bulk-status', { date, status, fieldIds });
+    closeModal($('#rainout-modal'));
+    toast(`${result.updated} event(s) updated.`, 'success');
+    loadEvents();
+  } catch (err) {
+    toast(err.message, 'error');
+  }
 }
 
 async function loadEvents() {

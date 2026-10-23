@@ -381,13 +381,112 @@ check('but ends it on your other devices', !after.includes('sid-drop'));
 
 /* ---------------------------------------------------------------- */
 
-console.log(`\n${passed} passed, ${failed} failed\n`);
+section('Rain out (over HTTP)');
 
-try {
-  db.close();
-  fs.rmSync(TMP, { recursive: true, force: true });
-} catch {
-  /* best effort */
+async function rainoutTests() {
+  const app = require('../src/server');
+  const server = await new Promise((resolve) => {
+    const srv = app.listen(0, () => resolve(srv));
+  });
+  const base = `http://127.0.0.1:${server.address().port}`;
+
+  auth.createUser({ username: 'rainadmin', password: 'RainPass1234', role: 'owner' });
+
+  let cookie = '';
+  const call = async (method, p, body) => {
+    const res = await fetch(base + p, {
+      method,
+      headers: Object.assign(
+        { 'Content-Type': 'application/json' },
+        cookie ? { cookie } : {},
+        csrf ? { 'x-csrf-token': csrf } : {}
+      ),
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const setCookie = res.headers.getSetCookie ? res.headers.getSetCookie() : [];
+    if (setCookie.length) cookie = setCookie.map((c) => c.split(';')[0]).join('; ');
+    return { status: res.status, body: await res.json().catch(() => ({})) };
+  };
+
+  let csrf = '';
+  const login = await call('POST', '/api/auth/login', { username: 'rainadmin', password: 'RainPass1234' });
+  csrf = login.body.csrfToken;
+  check('an admin can sign in over HTTP', login.status === 200 && !!csrf);
+
+  // A Saturday with grass, turf and cage all booked.
+  const DAY = '2026-11-07';
+  const grassA = mkField(locationId, 'rain-grass-a', 'Rain Grass A');
+  const grassB = mkField(locationId, 'rain-grass-b', 'Rain Grass B');
+  const turf = mkField(locationId, 'rain-turf', 'Rain Turf', 'turf');
+  const cage = mkField(locationId, 'rain-cage', 'Rain Cage', 'cage');
+  const made = {};
+  for (const [key, fieldId] of Object.entries({ grassA, grassB, turf, cage })) {
+    made[key] = schedule.createEvent(
+      { fieldId, eventDate: DAY, startTime: '09:00', endTime: '11:00', eventType: 'game' },
+      null
+    ).id;
+  }
+  const statusOf = (id) => schedule.getEvent(id).status;
+
+  // Only the grass is called off.
+  const res = await call('POST', '/api/admin/events/bulk-status', {
+    date: DAY, status: 'rain', fieldIds: [grassA, grassB],
+  });
+  check('the call succeeds', res.status === 200, JSON.stringify(res.body));
+  check('it reports the number it changed', res.body.updated === 2, `updated=${res.body.updated}`);
+  check('grass is rained out', statusOf(made.grassA) === 'rain' && statusOf(made.grassB) === 'rain');
+  check('turf keeps playing', statusOf(made.turf) === 'scheduled');
+  check('the cages keep playing', statusOf(made.cage) === 'scheduled');
+
+  // Later the weather turns and the turf goes too, without re-touching the grass.
+  const second = await call('POST', '/api/admin/events/bulk-status', {
+    date: DAY, status: 'rain', fieldIds: [turf],
+  });
+  check('a second pass can add the turf', second.body.updated === 1 && statusOf(made.turf) === 'rain');
+  check('the cages are still on', statusOf(made.cage) === 'scheduled');
+
+  // Putting one field back.
+  await call('POST', '/api/admin/events/bulk-status', { date: DAY, status: 'scheduled', fieldIds: [turf] });
+  check('a field can be put back', statusOf(made.turf) === 'scheduled');
+
+  const empty = await call('POST', '/api/admin/events/bulk-status', { date: DAY, status: 'rain', fieldIds: [] });
+  check('an empty field list is refused', empty.status === 400, `status=${empty.status}`);
+
+  const notArray = await call('POST', '/api/admin/events/bulk-status', { date: DAY, status: 'rain', fieldIds: 'all' });
+  check('a malformed field list is refused', notArray.status === 400);
+
+  const badDate = await call('POST', '/api/admin/events/bulk-status', { date: '2026-02-30', status: 'rain', fieldIds: [grassA] });
+  check('an impossible date is refused', badDate.status === 400);
+
+  const badStatus = await call('POST', '/api/admin/events/bulk-status', { date: DAY, status: 'soggy', fieldIds: [grassA] });
+  check('an unknown status is refused', badStatus.status === 400);
+
+  // A whole location still works, for the washout that takes everything.
+  const wholeSite = await call('POST', '/api/admin/events/bulk-status', {
+    date: DAY, status: 'rain', locationId,
+  });
+  check('a whole location can still be called off at once', wholeSite.body.updated >= 4);
+  check('that does reach the cages', statusOf(made.cage) === 'rain');
+
+  await new Promise((resolve) => server.close(resolve));
 }
 
-process.exit(failed ? 1 : 0);
+rainoutTests()
+  .catch((err) => {
+    failed += 1;
+    console.log(`  FAIL  rain-out tests threw — ${err.message}`);
+  })
+  .then(() => {
+    console.log(`\n${passed} passed, ${failed} failed\n`);
+    finish();
+  });
+
+function finish() {
+  try {
+    db.close();
+    fs.rmSync(TMP, { recursive: true, force: true });
+  } catch {
+    /* best effort */
+  }
+  process.exit(failed ? 1 : 0);
+}

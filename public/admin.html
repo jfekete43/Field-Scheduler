@@ -392,27 +392,41 @@
     </div>
     <div class="modal-body">
       <p class="hint" style="margin-top:0">
-        Marks every event on that date with the status you pick. Events stay on the schedule
-        so families can see what was called off.
+        Events stay on the schedule so families can see what was called off, rather than
+        wondering whether anything was ever planned.
       </p>
+
       <div class="form-grid">
         <div class="field">
           <label class="lbl" for="r-date">Date <span aria-hidden="true">*</span></label>
           <input type="date" id="r-date" required>
         </div>
         <div class="field">
-          <label class="lbl" for="r-location">Location</label>
-          <select id="r-location"><option value="">Every location</option></select>
-        </div>
-        <div class="field">
           <label class="lbl" for="r-status">New status</label>
           <select id="r-status"></select>
         </div>
       </div>
+
+      <div style="margin-top:16px">
+        <div class="rain-head">
+          <span class="lbl">Which fields are affected</span>
+          <span class="spacer"></span>
+          <button class="btn btn-sm" type="button" id="r-suggest">Suggested</button>
+          <button class="btn btn-sm" type="button" id="r-all">All</button>
+          <button class="btn btn-sm" type="button" id="r-none">None</button>
+        </div>
+        <p class="hint" style="margin:0 0 10px">
+          The indoor cages and the turf start unticked — they usually play when the grass
+          cannot. Tick them if it is bad enough that they are out too.
+        </p>
+        <div id="rainout-picker"></div>
+      </div>
     </div>
     <div class="modal-foot">
+      <span class="inline-note" id="rainout-count"></span>
+      <span class="spacer"></span>
       <button class="btn" type="button" data-close>Cancel</button>
-      <button class="btn btn-primary" type="submit">Apply</button>
+      <button class="btn btn-primary" type="submit" id="r-apply">Apply</button>
     </div>
   </form>
 </dialog>

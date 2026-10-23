@@ -184,7 +184,13 @@ router.delete(
   })
 );
 
-/** Bulk status change — used for rain-outs across a date or a whole location. */
+/**
+ * Bulk status change, used for rain-outs.
+ *
+ * Takes the exact fields to act on, because a rain-out is rarely all-or-nothing:
+ * the indoor cages play through anything, and turf drains when grass does not.
+ * `locationId` is still accepted to mean "every field at this location".
+ */
 router.post(
   '/events/bulk-status',
   wrap((req, res) => {
@@ -195,15 +201,47 @@ router.post(
     const date = req.body.date;
     if (!schedule.isRealDate(date)) throw Object.assign(new Error('Enter a valid date.'), { status: 400 });
 
-    const locationId = req.body.locationId ? intParam(req.body.locationId, 'location id') : null;
-    const params = [status, date];
-    let sql = `UPDATE events SET status = ?, updated_at = datetime('now') WHERE event_date = ?`;
-    if (locationId) {
-      sql += ' AND field_id IN (SELECT id FROM fields WHERE location_id = ?)';
-      params.push(locationId);
+    let fieldIds = null;
+
+    if (req.body.fieldIds !== undefined) {
+      if (!Array.isArray(req.body.fieldIds)) {
+        throw Object.assign(new Error('Choose which fields are affected.'), { status: 400 });
+      }
+      fieldIds = [...new Set(req.body.fieldIds.map(Number))].filter((n) => Number.isInteger(n) && n > 0);
+      if (!fieldIds.length) {
+        throw Object.assign(new Error('Pick at least one field.'), { status: 400 });
+      }
+    } else if (req.body.locationId) {
+      const locationId = intParam(req.body.locationId, 'location id');
+      fieldIds = db
+        .prepare('SELECT id FROM fields WHERE location_id = ?')
+        .all(locationId)
+        .map((f) => f.id);
+      if (!fieldIds.length) return res.json({ ok: true, updated: 0 });
     }
-    const changes = db.prepare(sql).run(...params).changes;
-    logAction(req.user, 'bulk_status', 'events', date, `${status} x${changes}${locationId ? ` loc=${locationId}` : ''}`);
+
+    let changes;
+    if (fieldIds) {
+      const holes = fieldIds.map(() => '?').join(',');
+      changes = db
+        .prepare(
+          `UPDATE events SET status = ?, updated_at = datetime('now')
+            WHERE event_date = ? AND field_id IN (${holes})`
+        )
+        .run(status, date, ...fieldIds).changes;
+    } else {
+      changes = db
+        .prepare("UPDATE events SET status = ?, updated_at = datetime('now') WHERE event_date = ?")
+        .run(status, date).changes;
+    }
+
+    logAction(
+      req.user,
+      'bulk_status',
+      'events',
+      date,
+      `${status} x${changes}${fieldIds ? ` fields=${fieldIds.length}` : ' (all fields)'}`
+    );
     res.json({ ok: true, updated: changes });
   })
 );

@@ -697,6 +697,48 @@ input[type="file"] { font-size: 13.5px; }
 .state-pill { font-size: 11px; font-weight: 800; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; background: var(--green-50); color: var(--green-600); }
 .state-pill.off { background: var(--slate-50); color: var(--slate-600); }
 
+/* ---------- Rain-out field picker ---------- */
+
+.rain-head { display: flex; align-items: center; gap: 7px; margin-bottom: 6px; flex-wrap: wrap; }
+
+.rain-loc { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.rain-loc + .rain-loc { margin-top: 9px; }
+
+.rain-loc-head {
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 12px; background: var(--surface-sunken);
+  border-bottom: 1px solid var(--line);
+  font-size: 12.5px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--navy-700);
+}
+
+.rain-loc-head .rain-loc-count { font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--ink-faint); }
+
+.rain-field {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; cursor: pointer;
+  border-top: 1px solid var(--line-soft);
+  font-size: 14px;
+}
+
+.rain-loc-head + .rain-field { border-top: 0; }
+.rain-field:hover { background: #fafcff; }
+.rain-field input[type="checkbox"] { width: auto; flex: none; margin: 0; }
+.rain-field .rain-name { font-weight: 600; }
+.rain-field .rain-count { color: var(--ink-faint); font-size: 13px; }
+.rain-field .spacer { flex: 1; }
+
+.rain-why {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+}
+
+.rain-why.indoor { background: var(--purple-50); color: var(--purple-600); }
+.rain-why.drains { background: var(--green-50); color: var(--green-600); }
+
+.rain-field.is-off .rain-name,
+.rain-field.is-off .rain-count { color: var(--ink-faint); }
+
 /* ---------- Responsive ---------- */
 
 @media (max-width: 900px) {

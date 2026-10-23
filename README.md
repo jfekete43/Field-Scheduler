@@ -25,8 +25,9 @@ changes.
 - Add, edit and delete events; repeat one weekly for a whole season in a single step
 - **Double-booking protection** — it refuses to put two things on the same field at the same time,
   shows what the clash is, and lets you override deliberately if you really mean to
-- **Rain out a day** — mark every event at one location (or everywhere) as rained out at once;
-  the events stay visible so families can see what was called off
+- **Rain out a day** — a tick-list of the fields booked that day, pre-set so the indoor cages and
+  the turf keep playing while the grass is called off; the events stay visible so families can see
+  what was called off
 - Edit addresses, upload a field map per site and click to place labels on it
 - Upload the league logo, set the season label, and post an announcement banner
 - Add and remove admin accounts, reset passwords
@@ -163,11 +164,30 @@ choose **Save Anyway** if you genuinely want two things on the field at once.
 
 ### Rain
 
-**Schedule → Rain Out a Day.** Pick the date, optionally narrow it to one location, and apply.
-Everything that day is marked rained out and shows struck through on the public site, so families
-can tell the difference between "canceled" and "never scheduled".
+**Schedule → Rain Out a Day.** Pick the date and you get a tick-list of every field with something
+booked that day, grouped by site, with a count of what is on each one.
 
-To call off a single event instead, edit it and set its **Status**.
+It starts with a sensible guess rather than selecting everything:
+
+- **The indoor cages are left unticked.** Rain never closes them. Tick them for snow or a
+  power cut.
+- **Turf fields are left unticked.** Turf drains long after grass has given up, so Turf 1 and
+  Turf 2 at Justice usually play on.
+- **Everything else is ticked**, since grass and dirt are what the weather takes out.
+
+Adjust whatever you like: tick or untick individual fields, use **Whole site** / **Clear site**
+on a location, or **All** / **None** / **Suggested** across the board. The footer keeps a running
+count ("9 of 13 events → Rained Out") so you can see what you are about to do before you do it.
+
+You can come back and run it again. If the turf gives up two hours later, open it, tick just the
+turf, and apply — the fields you already called off are not touched.
+
+Events stay on the schedule showing struck through, so families can tell the difference between
+"called off" and "never scheduled". To call off a single event instead, edit it and set its
+**Status**.
+
+> The guess comes from each field's **Kind** under **Locations & Maps**. If you add another turf
+> field, set its kind to Turf and it behaves the same way automatically.
 
 ### Taking a field out of use
 
