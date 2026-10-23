@@ -33,6 +33,11 @@ const EVENT_TYPE_VALUES = EVENT_TYPES.map((t) => t.value);
 const STATUS_VALUES = STATUSES.map((s) => s.value);
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// An all-day block is stored as a real time span covering the day, so that
+// conflict detection, the calendar feed and every list need no special case.
+const ALL_DAY_START = '00:00';
+const ALL_DAY_END = '23:59';
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 function badRequest(message) {
@@ -75,12 +80,16 @@ function normalizeEvent(payload) {
   const eventDate = str(payload.eventDate ?? payload.event_date, 10);
   if (!isRealDate(eventDate)) throw badRequest('Enter a valid date.');
 
-  const startTime = str(payload.startTime ?? payload.start_time, 5);
-  const endTime = str(payload.endTime ?? payload.end_time, 5);
-  if (!TIME_RE.test(startTime)) throw badRequest('Enter a valid start time.');
-  if (!TIME_RE.test(endTime)) throw badRequest('Enter a valid end time.');
-  if (minutesOf(endTime) <= minutesOf(startTime)) {
-    throw badRequest('The end time must be after the start time.');
+  const allDay = payload.allDay === true || payload.allDay === 'true' || payload.all_day === 1;
+  const startTime = allDay ? ALL_DAY_START : str(payload.startTime ?? payload.start_time, 5);
+  const endTime = allDay ? ALL_DAY_END : str(payload.endTime ?? payload.end_time, 5);
+
+  if (!allDay) {
+    if (!TIME_RE.test(startTime)) throw badRequest('Enter a valid start time.');
+    if (!TIME_RE.test(endTime)) throw badRequest('Enter a valid end time.');
+    if (minutesOf(endTime) <= minutesOf(startTime)) {
+      throw badRequest('The end time must be after the start time.');
+    }
   }
 
   const eventType = str(payload.eventType ?? payload.event_type, 20) || 'game';
@@ -99,6 +108,7 @@ function normalizeEvent(payload) {
     event_date: eventDate,
     start_time: startTime,
     end_time: endTime,
+    all_day: allDay ? 1 : 0,
     notes: str(payload.notes, 1000),
     status,
   };
@@ -133,9 +143,9 @@ function findConflicts({ field_id, event_date, start_time, end_time }, excludeId
 
 const INSERT_EVENT = `
   INSERT INTO events (field_id, event_type, title, division, home_team, away_team,
-                      event_date, start_time, end_time, notes, status, series_id, created_by)
+                      event_date, start_time, end_time, all_day, notes, status, series_id, created_by)
   VALUES (@field_id, @event_type, @title, @division, @home_team, @away_team,
-          @event_date, @start_time, @end_time, @notes, @status, @series_id, @created_by)`;
+          @event_date, @start_time, @end_time, @all_day, @notes, @status, @series_id, @created_by)`;
 
 function createEvent(payload, user, { allowConflict = false } = {}) {
   const event = normalizeEvent(payload);
@@ -258,7 +268,7 @@ function updateEvent(id, payload, user, { allowConflict = false } = {}) {
     `UPDATE events SET field_id = @field_id, event_type = @event_type, title = @title,
             division = @division, home_team = @home_team, away_team = @away_team,
             event_date = @event_date, start_time = @start_time, end_time = @end_time,
-            notes = @notes, status = @status, updated_at = datetime('now')
+            all_day = @all_day, notes = @notes, status = @status, updated_at = datetime('now')
       WHERE id = @id`
   ).run({ ...event, id });
 
@@ -291,12 +301,13 @@ function describeConflict(row) {
     date: row.event_date,
     startTime: row.start_time,
     endTime: row.end_time,
+    allDay: !!row.all_day,
   };
 }
 
 const EVENT_SELECT = `
   SELECT e.id, e.event_type, e.title, e.division, e.home_team, e.away_team,
-         e.event_date, e.start_time, e.end_time, e.notes, e.status, e.series_id,
+         e.event_date, e.start_time, e.end_time, e.all_day, e.notes, e.status, e.series_id,
          e.created_at, e.updated_at,
          f.id AS field_id, f.name AS field_name, f.slug AS field_slug, f.kind AS field_kind,
          l.id AS location_id, l.name AS location_name, l.slug AS location_slug,
@@ -317,6 +328,7 @@ function shapeEvent(row) {
     date: row.event_date,
     startTime: row.start_time,
     endTime: row.end_time,
+    allDay: !!row.all_day,
     notes: row.notes,
     status: row.status,
     seriesId: row.series_id,
@@ -426,6 +438,8 @@ function listTeams() {
 }
 
 module.exports = {
+  ALL_DAY_START,
+  ALL_DAY_END,
   EVENT_TYPES,
   STATUSES,
   FIELD_KINDS,

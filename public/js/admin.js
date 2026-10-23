@@ -267,6 +267,23 @@ function wireSchedule() {
   $('#event-form').addEventListener('submit', saveEvent);
   $('#btn-delete-event').addEventListener('click', deleteCurrentEvent);
 
+  $('#e-all-day').addEventListener('change', (e) => {
+    const on = e.target.checked;
+    $('#field-start').hidden = on;
+    $('#field-end').hidden = on;
+    $('#field-through').hidden = !on;
+    $('#e-start').required = !on;
+    $('#e-end').required = !on;
+    // All day and Repeat would fight over the same dates, so only one applies.
+    $('#repeat-box').hidden = on || !!admin.editing;
+    if (on) {
+      $('#e-repeat').checked = false;
+      $('#repeat-options').hidden = true;
+    } else {
+      $('#e-through').value = '';
+    }
+  });
+
   $('#e-repeat').addEventListener('change', (e) => {
     $('#repeat-options').hidden = !e.target.checked;
     if (e.target.checked && !$('#e-repeat-until').value) {
@@ -560,7 +577,7 @@ function renderAdminSchedule() {
 function adminEventRow(event) {
   const headline = eventHeadline(event) || labelFor(admin.boot.eventTypes, event.eventType);
   return h('tr', {},
-    h('td', { class: 'num', style: 'white-space:nowrap' }, formatTimeRange(event.startTime, event.endTime)),
+    h('td', { class: 'num', style: 'white-space:nowrap' }, describeWhen(event)),
     h('td', {}, h('strong', {}, event.locationName), ' · ', event.fieldName),
     h('td', {},
       h('div', { style: 'font-weight:600' }, headline),
@@ -644,18 +661,29 @@ function openEventEditor(event, defaults = {}) {
   clear($('#event-form-error'));
   clear($('#conflict-slot'));
 
+  const source = event || {};
+
   $('#event-editor-title').textContent = event ? 'Edit Event' : 'Add Event';
   $('#btn-delete-event').hidden = !event;
   $('#repeat-box').hidden = !!event;
   $('#e-repeat').checked = false;
   $('#repeat-options').hidden = true;
+
+  const allDay = !!source.allDay;
+  $('#e-all-day').checked = allDay;
+  $('#field-start').hidden = allDay;
+  $('#field-end').hidden = allDay;
+  $('#field-through').hidden = !allDay;
+  $('#e-start').required = !allDay;
+  $('#e-end').required = !allDay;
+  $('#e-through').value = '';
+  $('#repeat-box').hidden = allDay || !!event;
   $('#e-repeat-count').value = '8';
   $('#e-repeat-every').value = '7';
   $('#e-end-count').checked = true;
   $('#e-repeat-until').value = '';
   clear($('#repeat-summary'));
 
-  const source = event || {};
   $('#e-field').value = source.fieldId ? String(source.fieldId) : '';
   $('#e-type').value = source.eventType || 'game';
   $('#e-date').value = source.date || defaults.date || admin.filters.from || admin.boot.today;
@@ -674,6 +702,7 @@ function openEventEditor(event, defaults = {}) {
 
 function readEventForm() {
   return {
+    allDay: $('#e-all-day').checked,
     fieldId: $('#e-field').value,
     eventType: $('#e-type').value,
     eventDate: $('#e-date').value,
@@ -697,6 +726,18 @@ async function saveEvent(submitEvent) {
   if (!payload.fieldId) {
     errorSlot.append(h('div', { class: 'form-error' }, 'Choose a location and field.'));
     return;
+  }
+
+  // "Through" a later date is a block on each of those days.
+  if (!admin.editing && $('#e-all-day').checked && $('#e-through').value) {
+    const through = $('#e-through').value;
+    if (through < payload.eventDate) {
+      errorSlot.append(h('div', { class: 'form-error' }, 'The "through" date is before the start date.'));
+      return;
+    }
+    payload.repeat = true;
+    payload.repeatEveryDays = 1;
+    payload.repeatUntil = through;
   }
 
   if (!admin.editing && $('#e-repeat').checked) {
@@ -725,15 +766,39 @@ async function saveEvent(submitEvent) {
     finishSave(result);
   } catch (err) {
     if (err.status === 409 && err.conflicts?.length) {
-      const proceed = await showConflicts(err.conflicts);
-      if (proceed) {
+      // Let the form go back to rest while the dialog is up, so the button
+      // behind it is not stuck reading "Saving...".
+      button.disabled = false;
+      button.textContent = 'Save Event';
+
+      const attempted = {
+        allDay: payload.allDay,
+        startTime: payload.startTime,
+        endTime: payload.endTime,
+      };
+      const choice = await showConflicts(err.conflicts, attempted);
+
+      if (choice.action === 'anyway') {
         try {
-          const result = await send(true);
-          finishSave(result);
+          finishSave(await send(true));
           return;
         } catch (err2) {
           errorSlot.append(h('div', { class: 'form-error' }, err2.message));
         }
+      } else if (choice.action === 'edit') {
+        // Swap this editor for the booking that is in the way.
+        const existing = admin.events.find((e) => e.id === choice.eventId)
+          || (await api.get(`/api/events?from=${payload.eventDate}&to=${payload.eventDate}`))
+            .events.find((e) => e.id === choice.eventId);
+        closeModal($('#event-editor'));
+        if (existing) {
+          setTimeout(() => openEventEditor(existing), 120);
+        } else {
+          toast('That booking could not be opened. Find it in the list below.', 'error');
+        }
+      } else {
+        // Back to the form, with the start time selected to retype.
+        setTimeout(() => $('#e-start').focus(), 60);
       }
     } else {
       errorSlot.append(h('div', { class: 'form-error' }, err.message));
@@ -756,25 +821,66 @@ function finishSave(result) {
   refreshBoot().then(loadEvents);
 }
 
-/** Shows the clashing bookings and asks whether to double-book anyway. */
-function showConflicts(conflicts) {
-  const slot = clear($('#conflict-slot'));
-  slot.append(
-    h('div', { class: 'conflict-box' },
-      h('h4', {}, conflicts.length === 1 ? 'That field is already booked' : 'That field has existing bookings'),
-      h('ul', {}, conflicts.map((c) =>
-        h('li', {}, `${c.locationName} · ${c.fieldName} — ${formatTimeRange(c.startTime, c.endTime)}${c.label ? ` (${c.label})` : ''}`))),
-      h('p', { style: 'margin:9px 0 0' }, 'Save anyway and allow the overlap?'))
-  );
-  slot.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+/**
+ * Stops the save and shows what is in the way.
+ *
+ * Resolves to 'anyway' to allow the overlap, 'edit' when the admin chose to go
+ * and move the existing booking instead, or 'cancel' to go back to the form.
+ */
+function showConflicts(conflicts, attempted) {
+  return new Promise((resolve) => {
+    const modal = $('#conflict-modal');
+    const only = conflicts.length === 1;
 
-  return confirmAction({
-    title: 'Double-book this field?',
-    message: [
-      `This overlaps ${conflicts.length} existing booking(s) on the same field.`,
-      'Only do this if you really want two things on the field at once.',
-    ],
-    confirmLabel: 'Save Anyway',
+    $('#conflict-modal-title').textContent = only
+      ? 'That field is already booked'
+      : 'That field has other bookings';
+
+    $('#conflict-intro').textContent = only
+      ? `${conflicts[0].locationName} · ${conflicts[0].fieldName} already has something on `
+        + `${formatDateMedium(conflicts[0].date)}:`
+      : `${conflicts[0].locationName} · ${conflicts[0].fieldName} already has `
+        + `${conflicts.length} bookings that overlap:`;
+
+    const list = clear($('#conflict-list'));
+
+    conflicts.forEach((clash) => {
+      list.append(
+        h('div', { class: 'clash' },
+          h('div', { class: 'clash-main' },
+            h('div', { class: 'clash-when' },
+              clash.allDay ? 'All day' : formatTimeRange(clash.startTime, clash.endTime)),
+            h('div', { class: 'clash-what' }, clash.label || 'Booked')),
+          h('button', {
+            class: 'btn btn-sm', type: 'button',
+            onClick: () => settle('edit', clash.id),
+          }, 'Open this one'))
+      );
+    });
+
+    // Spell out what was being added, so the overlap is obvious.
+    if (attempted) {
+      list.append(
+        h('div', { class: 'clash-yours' },
+          h('div', { class: 'clash-when' },
+            attempted.allDay ? 'All day' : formatTimeRange(attempted.startTime, attempted.endTime)),
+          h('div', { class: 'clash-what' }, 'what you are adding'))
+      );
+    }
+
+    let settled = false;
+    const settle = (result, id) => {
+      if (settled) return;
+      settled = true;
+      closeModal(modal);
+      resolve({ action: result, eventId: id });
+    };
+
+    $('#btn-conflict-anyway').onclick = () => settle('anyway');
+    $$('[data-conflict-cancel]', modal).forEach((btn) => { btn.onclick = () => settle('cancel'); });
+    modal.addEventListener('close', () => settle('cancel'), { once: true });
+
+    openModal(modal);
   });
 }
 
@@ -784,7 +890,7 @@ async function deleteCurrentEvent() {
   const ok = await confirmAction({
     title: 'Delete this event?',
     message: [
-      `${eventHeadline(event) || labelFor(admin.boot.eventTypes, event.eventType)} — ${formatDateMedium(event.date)}, ${formatTimeRange(event.startTime, event.endTime)} at ${event.locationName} · ${event.fieldName}.`,
+      `${eventHeadline(event) || labelFor(admin.boot.eventTypes, event.eventType)} — ${formatDateMedium(event.date)}, ${describeWhen(event)} at ${event.locationName} · ${event.fieldName}.`,
       'This cannot be undone. To keep it visible but called off, set the status to Canceled or Rained Out instead.',
     ],
     confirmLabel: 'Delete Event',

@@ -697,6 +697,27 @@ input[type="file"] { font-size: 13.5px; }
 .state-pill { font-size: 11px; font-weight: 800; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; background: var(--green-50); color: var(--green-600); }
 .state-pill.off { background: var(--slate-50); color: var(--slate-600); }
 
+/* ---------- Conflict list ---------- */
+
+.clash {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  border: 1px solid #f3d9a9; background: var(--amber-50);
+  border-radius: var(--radius); padding: 11px 13px;
+}
+
+.clash + .clash { margin-top: 8px; }
+.clash-main { min-width: 0; flex: 1; }
+.clash-when { font-weight: 700; font-size: 14.5px; color: #7c3f06; font-variant-numeric: tabular-nums; }
+.clash-what { font-size: 13.5px; color: #8a5a16; margin-top: 2px; overflow-wrap: anywhere; }
+
+.clash-yours {
+  border: 1px dashed var(--line); background: var(--surface-sunken);
+  border-radius: var(--radius); padding: 11px 13px; margin-top: 8px;
+}
+
+.clash-yours .clash-when { color: var(--ink); }
+.clash-yours .clash-what { color: var(--ink-faint); }
+
 /* ---------- Repeat ---------- */
 
 .repeat-box {

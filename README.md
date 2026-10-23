@@ -169,10 +169,33 @@ Repeat is only offered when adding a new event. Editing one changes just that da
 single rained-out practice never disturbs the rest of the series. To remove the rest of a series,
 use the **Series** button on any of its rows.
 
+### Blocking a field for a whole day
+
+Tick **Takes the field all day**. The start and end times disappear, and the field is closed for
+that whole date — nothing else can be booked on it.
+
+For a tournament that runs across a weekend, fill in **Through** with the last day. That creates a
+block on each day in the range, so you can lift one day without touching the others if the Sunday
+washes out.
+
+All-day blocks show as "All day — field closed" on the public schedule, and as a single all-day
+banner in Google and Apple Calendar rather than a 12:00 AM–11:59 PM entry.
+
 ### When a field is already booked
 
-The save is refused and you are shown exactly what is in the way. Either change the time, or
-choose **Save Anyway** if you genuinely want two things on the field at once.
+**It stops you.** The save is refused and a dialog shows exactly what is in the way: the existing
+booking's time, what it is, and the time you were trying to add, so the overlap is obvious.
+
+From there you can:
+
+- **Open this one** — jumps straight into editing the booking that is already there, so you can
+  move it and come back
+- **Change my time** — returns you to the form with your details intact
+- **Book both anyway** — deliberately allows the overlap, for the rare case where two things really
+  do share a field
+
+Canceled and rained-out events do not block the slot, so a called-off game never stops you
+rescheduling over it.
 
 ### Rain
 

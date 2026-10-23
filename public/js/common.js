@@ -101,6 +101,11 @@ function formatTime(timeStr) {
   return `${hour}:${String(m).padStart(2, '0')} ${suffix}`;
 }
 
+/** How an event's time reads in a list: a span, or "All day". */
+function describeWhen(event) {
+  return event.allDay ? 'All day' : formatTimeRange(event.startTime, event.endTime);
+}
+
 function formatTimeRange(start, end) {
   return `${formatTime(start)} – ${formatTime(end)}`;
 }

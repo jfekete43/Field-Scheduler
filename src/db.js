@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS events (
   end_time    TEXT NOT NULL,
   notes       TEXT NOT NULL DEFAULT '',
   status      TEXT NOT NULL DEFAULT 'scheduled',
+  all_day     INTEGER NOT NULL DEFAULT 0,
   series_id   TEXT,
   created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
   created_at  TEXT NOT NULL DEFAULT (datetime('now')),
@@ -117,6 +118,12 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log (created_at DESC);
 `);
+
+/* Migrations for databases created before a column existed. */
+const eventColumns = db.prepare('PRAGMA table_info(events)').all().map((c) => c.name);
+if (!eventColumns.includes('all_day')) {
+  db.exec('ALTER TABLE events ADD COLUMN all_day INTEGER NOT NULL DEFAULT 0');
+}
 
 const DEFAULT_SETTINGS = {
   league_name: 'Jackson Holbrook Little League',

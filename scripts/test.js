@@ -127,6 +127,64 @@ check('an event can be edited without conflicting with itself', edited.startTime
 
 /* ---------------------------------------------------------------- */
 
+section('All-day blocks');
+
+const blockField = mkField(locationId, 'block', 'Block Field');
+const block = schedule.createEvent(
+  { fieldId: blockField, eventDate: '2027-08-14', eventType: 'tournament', title: 'Fall Classic', allDay: true },
+  null
+);
+check('an all-day block needs no times', block.allDay === true);
+check('it covers the whole day', block.startTime === '00:00' && block.endTime === '23:59');
+
+throws('nothing else fits that day', () =>
+  schedule.createEvent({ fieldId: blockField, eventDate: '2027-08-14', startTime: '13:00', endTime: '15:00' }, null),
+  'already booked');
+throws('not even first thing in the morning', () =>
+  schedule.createEvent({ fieldId: blockField, eventDate: '2027-08-14', startTime: '00:00', endTime: '00:30' }, null),
+  'already booked');
+throws('not even last thing at night', () =>
+  schedule.createEvent({ fieldId: blockField, eventDate: '2027-08-14', startTime: '23:00', endTime: '23:59' }, null),
+  'already booked');
+
+const dayAfter = schedule.createEvent(
+  { fieldId: blockField, eventDate: '2027-08-15', startTime: '13:00', endTime: '15:00' },
+  null
+);
+check('the next day is unaffected', !!dayAfter);
+
+const otherField = mkField(locationId, 'block-other', 'Other Block Field');
+check('another field that day is unaffected',
+  !!schedule.createEvent({ fieldId: otherField, eventDate: '2027-08-14', startTime: '13:00', endTime: '15:00' }, null));
+
+// A multi-day tournament is one block per day.
+const multiField = mkField(locationId, 'multi', 'Multi Field');
+const weekend = schedule.createSeries(
+  { fieldId: multiField, eventDate: '2027-08-13', eventType: 'tournament', title: 'Three-day',
+    allDay: true, repeatEveryDays: 1, repeatUntil: '2027-08-15' },
+  null
+);
+check('a three-day block creates three events', weekend.created.length === 3);
+check('each one is all day', weekend.created.every((e) => e.allDay === true));
+check('they cover consecutive days',
+  weekend.created.map((e) => e.date).join(',') === '2027-08-13,2027-08-14,2027-08-15');
+
+// An all-day block can be turned back into a timed event.
+const relaxed = schedule.updateEvent(block.id,
+  { fieldId: blockField, eventDate: '2027-08-14', startTime: '09:00', endTime: '17:00', eventType: 'tournament' },
+  null);
+check('a block can become a timed event again', relaxed.allDay === false && relaxed.startTime === '09:00');
+check('which frees the rest of the day',
+  !!schedule.createEvent({ fieldId: blockField, eventDate: '2027-08-14', startTime: '18:00', endTime: '19:00' }, null));
+
+// The feed marks them as all-day rather than a midnight-to-23:59 span.
+const blockIcs = buildCalendar(
+  [schedule.getEvent(weekend.created[0].id)],
+  { calendarName: 'x', timeZone: 'America/New_York' }
+);
+check('the calendar feed uses a DATE value', blockIcs.includes('DTSTART;VALUE=DATE:20270813'));
+check('and ends on the following day, as the spec requires', blockIcs.includes('DTEND;VALUE=DATE:20270814'));
+
 section('Input validation');
 
 throws('an end time before the start is refused', () =>

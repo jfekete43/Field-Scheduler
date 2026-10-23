@@ -405,8 +405,10 @@ function eventCard(event) {
     },
   },
     h('div', { class: 'event-time' },
-      formatTime(event.startTime),
-      h('span', { class: 'to' }, `to ${formatTime(event.endTime)}`)),
+      event.allDay ? 'All day' : formatTime(event.startTime),
+      event.allDay
+        ? h('span', { class: 'to' }, 'field closed')
+        : h('span', { class: 'to' }, `to ${formatTime(event.endTime)}`)),
     h('div', { class: 'event-main' },
       h('div', { class: 'event-title' }, headline),
       h('div', { class: 'event-meta' }, meta),
@@ -439,7 +441,7 @@ function renderWeek() {
               class: `mini-event type-${event.eventType}${event.status !== 'scheduled' ? ' is-off' : ''}`,
               onClick: () => showEvent(event),
             },
-              h('div', { class: 'mini-time' }, formatTime(event.startTime)),
+              h('div', { class: 'mini-time' }, event.allDay ? 'All day' : formatTime(event.startTime)),
               h('div', { class: 'mini-title' },
                 eventHeadline(event) || labelFor(state.boot.eventTypes, event.eventType)),
               h('div', { class: 'mini-where' }, `${event.locationName} · ${event.fieldName}`)))
@@ -459,7 +461,7 @@ function showEvent(event) {
     eventHeadline(event) || labelFor(state.boot.eventTypes, event.eventType);
 
   const rows = [
-    ['When', `${formatDateLong(event.date)}\n${formatTimeRange(event.startTime, event.endTime)}`],
+    ['When', `${formatDateLong(event.date)}\n${describeWhen(event)}`],
     ['Where', `${event.locationName} — ${event.fieldName}`],
     ['Type', labelFor(state.boot.eventTypes, event.eventType)],
   ];

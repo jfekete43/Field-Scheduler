@@ -52,6 +52,13 @@ function wallTimeToUtc(dateStr, timeStr, timeZone) {
   return guess;
 }
 
+function nextDay(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + 1);
+  return dt.toISOString().slice(0, 10);
+}
+
 function stampUtc(date) {
   return `${date.toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`;
 }
@@ -120,17 +127,23 @@ function buildCalendar(events, { calendarName, timeZone, domain = 'jhll.local' }
   ];
 
   for (const event of events) {
-    const start = wallTimeToUtc(event.date, event.startTime, timeZone);
-    const end = wallTimeToUtc(event.date, event.endTime, timeZone);
     const place = [event.locationName, event.fieldName].filter(Boolean).join(' - ');
     const address = event.locationAddress ? ` (${event.locationAddress})` : '';
+
+    // An all-day block is emitted as a DATE value, so calendars show it as a
+    // banner across the day instead of a timed entry from midnight to 23:59.
+    // DTEND is exclusive, hence the following day.
+    const whenLines = event.allDay
+      ? [`DTSTART;VALUE=DATE:${event.date.replace(/-/g, '')}`,
+         `DTEND;VALUE=DATE:${nextDay(event.date).replace(/-/g, '')}`]
+      : [`DTSTART:${stampUtc(wallTimeToUtc(event.date, event.startTime, timeZone))}`,
+         `DTEND:${stampUtc(wallTimeToUtc(event.date, event.endTime, timeZone))}`];
 
     lines.push(
       'BEGIN:VEVENT',
       `UID:event-${event.id}@${domain}`,
       `DTSTAMP:${now}`,
-      `DTSTART:${stampUtc(start)}`,
-      `DTEND:${stampUtc(end)}`,
+      ...whenLines,
       `SUMMARY:${escapeText(summaryFor(event))}`,
       `LOCATION:${escapeText(place + address)}`,
       `DESCRIPTION:${escapeText(descriptionFor(event))}`,

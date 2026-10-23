@@ -215,13 +215,18 @@
           <label class="lbl" for="e-date">Date <span aria-hidden="true">*</span></label>
           <input type="date" id="e-date" required>
         </div>
-        <div class="field">
+        <div class="field" id="field-start">
           <label class="lbl" for="e-start">Start <span aria-hidden="true">*</span></label>
           <input type="time" id="e-start" required step="300">
         </div>
-        <div class="field">
+        <div class="field" id="field-end">
           <label class="lbl" for="e-end">End <span aria-hidden="true">*</span></label>
           <input type="time" id="e-end" required step="300">
+        </div>
+        <div class="field" id="field-through" hidden>
+          <label class="lbl" for="e-through">Through <span class="inline-note">(optional)</span></label>
+          <input type="date" id="e-through">
+          <p class="hint">Blocks every day up to and including this one.</p>
         </div>
         <div class="field">
           <label class="lbl" for="e-division">Division</label>
@@ -249,6 +254,14 @@
           <label class="lbl" for="e-notes">Notes</label>
           <textarea id="e-notes" maxlength="1000" placeholder="Anything parents and coaches should know."></textarea>
         </div>
+      </div>
+
+      <div class="repeat-box" style="margin-top:14px">
+        <label class="check-row">
+          <input type="checkbox" id="e-all-day">
+          <span class="check-label">Takes the field all day</span>
+          <span class="check-hint">For tournaments, work days, anything that closes a field</span>
+        </label>
       </div>
 
       <div id="repeat-box" class="repeat-box">
@@ -387,6 +400,27 @@
       <button class="btn btn-primary" type="submit">Create Account</button>
     </div>
   </form>
+</dialog>
+
+<!-- ============ Field already booked ============ -->
+<dialog class="modal" id="conflict-modal" aria-labelledby="conflict-modal-title">
+  <div class="modal-head">
+    <h2 id="conflict-modal-title">That field is already booked</h2>
+    <button class="modal-close" type="button" data-conflict-cancel aria-label="Close">&times;</button>
+  </div>
+  <div class="modal-body">
+    <p style="margin:0 0 12px;font-size:14.5px" id="conflict-intro"></p>
+    <div id="conflict-list"></div>
+    <p class="hint" style="margin:13px 0 0">
+      Two things on one field at the same time is usually a mistake. Change your time, or open the
+      booking that is already there and move it.
+    </p>
+  </div>
+  <div class="modal-foot">
+    <button class="btn btn-quiet" type="button" id="btn-conflict-anyway">Book both anyway</button>
+    <span class="spacer"></span>
+    <button class="btn" type="button" data-conflict-cancel>Change my time</button>
+  </div>
 </dialog>
 
 <dialog class="modal" id="confirm-modal" aria-labelledby="confirm-modal-title">
