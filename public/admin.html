@@ -251,15 +251,15 @@
         </div>
       </div>
 
-      <fieldset id="repeat-box" style="margin-top:16px;border:1px solid var(--line);border-radius:var(--radius);padding:13px">
-        <legend class="lbl" style="padding:0 6px">Repeat</legend>
-        <div class="form-grid">
-          <div class="field">
-            <label class="lbl" for="e-repeat-count">Number of weeks</label>
-            <input type="number" id="e-repeat-count" min="1" max="60" value="1">
-            <p class="hint">1 creates a single event.</p>
-          </div>
-          <div class="field">
+      <div id="repeat-box" class="repeat-box">
+        <label class="check-row">
+          <input type="checkbox" id="e-repeat">
+          <span class="check-label">Repeat this event</span>
+          <span class="check-hint">Set up a whole season of practices in one go</span>
+        </label>
+
+        <div id="repeat-options" class="repeat-options" hidden>
+          <div class="field" style="max-width:220px">
             <label class="lbl" for="e-repeat-every">Repeat every</label>
             <select id="e-repeat-every">
               <option value="7">Week</option>
@@ -267,8 +267,25 @@
               <option value="1">Day</option>
             </select>
           </div>
+
+          <div class="repeat-end">
+            <span class="lbl">Ends</span>
+            <label class="radio-row">
+              <input type="radio" name="repeat-end" id="e-end-count" value="count" checked>
+              <span>After</span>
+              <input type="number" id="e-repeat-count" min="2" max="60" value="8" aria-label="Number of times">
+              <span>times</span>
+            </label>
+            <label class="radio-row">
+              <input type="radio" name="repeat-end" id="e-end-until" value="until">
+              <span>On</span>
+              <input type="date" id="e-repeat-until" aria-label="Repeat until this date">
+            </label>
+          </div>
+
+          <p class="repeat-summary" id="repeat-summary"></p>
         </div>
-      </fieldset>
+      </div>
 
       <div id="conflict-slot" style="margin-top:14px"></div>
     </div>

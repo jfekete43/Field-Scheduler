@@ -188,6 +188,40 @@ check(
 throws('an absurd repeat count is refused', () =>
   schedule.createSeries({ ...base, fieldId: cages, repeatCount: 500 }, null), 'Repeat count');
 
+// Repeating until a date, rather than counting the weeks by hand.
+const untilField = mkField(locationId, 'until', 'Until Field');
+const untilSeries = schedule.createSeries(
+  { fieldId: untilField, eventDate: '2027-04-06', startTime: '17:30', endTime: '19:00', repeatUntil: '2027-06-15' },
+  null
+);
+check('repeating until a date creates the right number', untilSeries.created.length === 11);
+check('it starts on the event date', untilSeries.created[0].date === '2027-04-06');
+check('it stops on the end date', untilSeries.created[10].date === '2027-06-15');
+check('every date is the same weekday', untilSeries.created.every((e) => new Date(`${e.date}T00:00`).getDay() === 2));
+
+const spanField = mkField(locationId, 'span', 'Span Field');
+const fortnightly = schedule.createSeries(
+  { fieldId: spanField, eventDate: '2027-04-06', startTime: '09:00', endTime: '10:00', repeatUntil: '2027-06-15', repeatEveryDays: 14 },
+  null
+);
+check('the interval is respected when repeating until a date', fortnightly.created.length === 6);
+
+const exactField = mkField(locationId, 'exact', 'Exact Field');
+const sameDay = schedule.createSeries(
+  { fieldId: exactField, eventDate: '2027-04-06', startTime: '09:00', endTime: '10:00', repeatUntil: '2027-04-06' },
+  null
+);
+check('an end date equal to the start makes one event', sameDay.created.length === 1);
+
+throws('an end date before the start is refused', () =>
+  schedule.occurrenceCount({ repeatUntil: '2027-01-01' }, '2027-04-06', 7), 'before the first date');
+throws('an impossible end date is refused', () =>
+  schedule.occurrenceCount({ repeatUntil: '2027-02-30' }, '2027-04-06', 7), 'valid date');
+throws('a range that would flood the schedule is refused', () =>
+  schedule.occurrenceCount({ repeatUntil: '2030-01-01' }, '2027-04-06', 7), 'more than 60');
+check('a date range wins over a count when both are sent',
+  schedule.occurrenceCount({ repeatUntil: '2027-04-27', repeatCount: 99 }, '2027-04-06', 7) === 4);
+
 // Deleting from a date onward keeps the earlier dates.
 const removed = schedule.deleteSeries(series.seriesId, { fromDate: '2026-05-18' });
 check('deleting a series from a date removes only later dates', removed === 4);

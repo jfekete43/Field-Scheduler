@@ -157,17 +157,50 @@ function createEvent(payload, user, { allowConflict = false } = {}) {
 /**
  * Creates a weekly (or every-N-days) repeating series in one transaction.
  */
+const MAX_OCCURRENCES = 60;
+
+/**
+ * Works out how many times a series runs.
+ *
+ * A series ends either after a set number of times, or on a date — "every
+ * Tuesday until the season ends" is how people actually think about it, and
+ * counting the weeks by hand is the step worth removing.
+ */
+function occurrenceCount(payload, startDate, repeatEvery) {
+  const until = payload.repeatUntil ? String(payload.repeatUntil).trim() : '';
+
+  if (until) {
+    if (!isRealDate(until)) throw badRequest('Enter a valid date to repeat until.');
+    if (until < startDate) throw badRequest('The repeat-until date is before the first date.');
+    let count = 0;
+    for (let date = startDate; date <= until; date = addDays(date, repeatEvery)) {
+      count += 1;
+      if (count > MAX_OCCURRENCES) {
+        throw badRequest(
+          `That would create more than ${MAX_OCCURRENCES} events. Choose an earlier end date, or repeat less often.`
+        );
+      }
+    }
+    return count;
+  }
+
+  const count = Number(payload.repeatCount ?? 1);
+  if (!Number.isInteger(count) || count < 1 || count > MAX_OCCURRENCES) {
+    throw badRequest(`Repeat count must be between 1 and ${MAX_OCCURRENCES}.`);
+  }
+  return count;
+}
+
 function createSeries(payload, user, { allowConflict = false } = {}) {
   const base = normalizeEvent(payload);
-  const repeatCount = Number(payload.repeatCount ?? 1);
   const repeatEvery = Number(payload.repeatEveryDays ?? 7);
 
-  if (!Number.isInteger(repeatCount) || repeatCount < 1 || repeatCount > 60) {
-    throw badRequest('Repeat count must be between 1 and 60.');
-  }
   if (!Number.isInteger(repeatEvery) || repeatEvery < 1 || repeatEvery > 90) {
     throw badRequest('Repeat interval must be between 1 and 90 days.');
   }
+
+  const repeatCount = occurrenceCount(payload, base.event_date, repeatEvery);
+
   if (repeatCount === 1) {
     return { created: [createEvent(payload, user, { allowConflict })], skipped: [] };
   }
@@ -401,6 +434,8 @@ module.exports = {
   describeConflict,
   createEvent,
   createSeries,
+  occurrenceCount,
+  MAX_OCCURRENCES,
   updateEvent,
   deleteEvent,
   deleteSeries,

@@ -122,8 +122,11 @@ function eventLabel(event) {
 router.post(
   '/events',
   wrap((req, res) => {
-    const repeatCount = Number(req.body.repeatCount ?? 1);
-    if (repeatCount > 1) {
+    // `repeat` is the checkbox; the older repeatCount form still works.
+    const wantsSeries = truthy(req.body.repeat)
+      || !!req.body.repeatUntil
+      || Number(req.body.repeatCount ?? 1) > 1;
+    if (wantsSeries) {
       const result = schedule.createSeries(req.body, req.user, { allowConflict: allowConflictFlag(req) });
       logAction(
         req.user,

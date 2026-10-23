@@ -267,6 +267,25 @@ function wireSchedule() {
   $('#event-form').addEventListener('submit', saveEvent);
   $('#btn-delete-event').addEventListener('click', deleteCurrentEvent);
 
+  $('#e-repeat').addEventListener('change', (e) => {
+    $('#repeat-options').hidden = !e.target.checked;
+    if (e.target.checked && !$('#e-repeat-until').value) {
+      // A sensible first guess: eight weeks out from the event's own date.
+      $('#e-repeat-until').value = addDays($('#e-date').value || admin.boot.today, 7 * 7);
+    }
+    updateRepeatSummary();
+  });
+
+  ['#e-repeat-every', '#e-repeat-count', '#e-repeat-until', '#e-end-count', '#e-end-until', '#e-date']
+    .forEach((sel) => {
+      $(sel).addEventListener('change', updateRepeatSummary);
+      $(sel).addEventListener('input', updateRepeatSummary);
+    });
+
+  // Typing in a box picks the matching option, so the two never disagree.
+  $('#e-repeat-count').addEventListener('focus', () => { $('#e-end-count').checked = true; updateRepeatSummary(); });
+  $('#e-repeat-until').addEventListener('focus', () => { $('#e-end-until').checked = true; updateRepeatSummary(); });
+
   $('#btn-rainout').addEventListener('click', () => {
     $('#r-date').value = admin.filters.from || admin.boot.today;
     openModal($('#rainout-modal'));
@@ -564,6 +583,62 @@ function adminEventRow(event) {
 
 /* ---------------- Event editor ---------------- */
 
+const MAX_OCCURRENCES = 60;
+
+/** The dates a repeat would actually produce, given what is on the form. */
+function repeatDates() {
+  const start = $('#e-date').value;
+  const every = Number($('#e-repeat-every').value) || 7;
+  if (!start) return { dates: [], error: null };
+
+  if ($('#e-end-until').checked) {
+    const until = $('#e-repeat-until').value;
+    if (!until) return { dates: [], error: 'Pick a date to repeat until.' };
+    if (until < start) return { dates: [], error: 'That end date is before the event itself.' };
+    const dates = [];
+    for (let d = start; d <= until; d = addDays(d, every)) {
+      dates.push(d);
+      if (dates.length > MAX_OCCURRENCES) {
+        return { dates: [], error: `That is more than ${MAX_OCCURRENCES} events. Choose an earlier end date.` };
+      }
+    }
+    return { dates, error: null };
+  }
+
+  const count = Number($('#e-repeat-count').value);
+  if (!Number.isInteger(count) || count < 1) return { dates: [], error: 'Enter how many times it repeats.' };
+  if (count > MAX_OCCURRENCES) return { dates: [], error: `At most ${MAX_OCCURRENCES} at a time.` };
+  const dates = [];
+  for (let i = 0; i < count; i += 1) dates.push(addDays(start, i * every));
+  return { dates, error: null };
+}
+
+/** Says in plain words what the Save button is about to create. */
+function updateRepeatSummary() {
+  const box = $('#repeat-summary');
+  if (!$('#e-repeat').checked) { box.textContent = ''; return; }
+
+  const { dates, error } = repeatDates();
+  box.classList.toggle('is-warning', !!error);
+
+  if (error) { box.textContent = error; return; }
+  if (!dates.length) { box.textContent = ''; return; }
+  if (dates.length === 1) {
+    box.textContent = `Creates 1 event on ${formatDateMedium(dates[0])}.`;
+    return;
+  }
+
+  const every = Number($('#e-repeat-every').value) || 7;
+  const cadence = every === 1
+    ? 'every day'
+    : every === 7
+      ? `every ${DOW_LONG[parseDate(dates[0]).getDay()]}`
+      : `every other ${DOW_LONG[parseDate(dates[0]).getDay()]}`;
+
+  box.textContent = `Creates ${dates.length} events, ${cadence} from `
+    + `${formatDateMedium(dates[0])} through ${formatDateMedium(dates[dates.length - 1])}.`;
+}
+
 function openEventEditor(event, defaults = {}) {
   admin.editing = event;
   clear($('#event-form-error'));
@@ -572,8 +647,13 @@ function openEventEditor(event, defaults = {}) {
   $('#event-editor-title').textContent = event ? 'Edit Event' : 'Add Event';
   $('#btn-delete-event').hidden = !event;
   $('#repeat-box').hidden = !!event;
-  $('#e-repeat-count').value = '1';
+  $('#e-repeat').checked = false;
+  $('#repeat-options').hidden = true;
+  $('#e-repeat-count').value = '8';
   $('#e-repeat-every').value = '7';
+  $('#e-end-count').checked = true;
+  $('#e-repeat-until').value = '';
+  clear($('#repeat-summary'));
 
   const source = event || {};
   $('#e-field').value = source.fieldId ? String(source.fieldId) : '';
@@ -619,9 +699,16 @@ async function saveEvent(submitEvent) {
     return;
   }
 
-  if (!admin.editing) {
-    payload.repeatCount = Number($('#e-repeat-count').value) || 1;
+  if (!admin.editing && $('#e-repeat').checked) {
+    const { error } = repeatDates();
+    if (error) {
+      errorSlot.append(h('div', { class: 'form-error' }, error));
+      return;
+    }
+    payload.repeat = true;
     payload.repeatEveryDays = Number($('#e-repeat-every').value) || 7;
+    if ($('#e-end-until').checked) payload.repeatUntil = $('#e-repeat-until').value;
+    else payload.repeatCount = Number($('#e-repeat-count').value) || 1;
   }
 
   const button = $('#btn-save-event');

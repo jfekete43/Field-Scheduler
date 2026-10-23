@@ -22,7 +22,8 @@ changes.
 
 **For admins (after signing in at `/admin`):**
 
-- Add, edit and delete events; repeat one weekly for a whole season in a single step
+- Add, edit and delete events; repeat one for a whole season in a single step, ending after a
+  set number of times or on a date
 - **Double-booking protection** — it refuses to put two things on the same field at the same time,
   shows what the clash is, and lets you override deliberately if you really mean to
 - **Rain out a day** — a tick-list of the fields booked that day, pre-set so the indoor cages and
@@ -153,9 +154,20 @@ npm run reset-password -- --username jim --password 'ANewPassword123'
 **Schedule → + Add Event.** Pick the location and field, the date and times, and the type
 (game, practice, cage session, tournament, clinic, maintenance, closed).
 
-For something that happens every week — a standing practice or a weekly cage slot — set
-**Repeat → Number of weeks** to however many weeks it runs. It creates them all at once and tells
-you if any individual date had to be skipped because the field was already taken.
+For something that happens every week — a standing practice or a weekly cage slot — tick
+**Repeat this event**. You then choose how often it repeats (every week, every other week, or
+every day) and how it ends:
+
+- **After a number of times**, when you know it is an eight-week session, or
+- **On a date**, when you know it runs until the last day of the season
+
+A line underneath says exactly what you are about to create — *"Creates 11 events, every Tuesday
+from Tue, Apr 6 through Tue, Jun 15"* — so you can check it before saving. It creates them all at
+once and tells you if any individual date had to be skipped because the field was already taken.
+
+Repeat is only offered when adding a new event. Editing one changes just that date, so fixing a
+single rained-out practice never disturbs the rest of the series. To remove the rest of a series,
+use the **Series** button on any of its rows.
 
 ### When a field is already booked
 
