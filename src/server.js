@@ -121,6 +121,38 @@ function userCount() {
   return db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
 }
 
+/**
+ * Recreates an admin account from the environment if it is missing.
+ *
+ * Free hosting tiers have no persistent disk, so the database is wiped every
+ * time the service restarts and the admin account goes with it. Setting
+ * ADMIN_USERNAME and ADMIN_PASSWORD means the login works again as soon as the
+ * service comes back, instead of dropping you at the first-run setup page.
+ *
+ * For a real deployment, leave these unset, attach a persistent disk and create
+ * the account through /admin/setup so the password is never stored in config.
+ */
+function ensureAdminFromEnv() {
+  const username = process.env.ADMIN_USERNAME;
+  const password = process.env.ADMIN_PASSWORD;
+  if (!username || !password) return;
+
+  if (auth.findUserByUsername(username)) return;
+
+  try {
+    const created = auth.createUser({
+      username,
+      password,
+      displayName: process.env.ADMIN_NAME || username,
+      role: 'owner',
+    });
+    logAction(created, 'create_user_env', 'users', created.id, created.username);
+    console.log(`  Admin account "${created.username}" restored from the environment.`);
+  } catch (err) {
+    console.warn(`[warn] ADMIN_USERNAME/ADMIN_PASSWORD were set but ignored: ${err.message}`);
+  }
+}
+
 function sendPage(res, file) {
   res.set('Cache-Control', 'no-cache');
   res.sendFile(path.join(PUBLIC_DIR, file));
@@ -339,6 +371,8 @@ app.use((err, _req, res, _next) => {
  * ---------------------------------------------------------------- */
 
 if (require.main === module) {
+  ensureAdminFromEnv();
+
   const server = app.listen(PORT, () => {
     const settings = getSettings();
     console.log(`\n${settings.league_name} - Field Scheduler`);

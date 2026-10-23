@@ -1,29 +1,40 @@
-# Render.com blueprint.
+# Render.com blueprint — FREE, for trying the site out.
 #
-# Create the service from this file, then set SESSION_SECRET in the Render
-# dashboard. The persistent disk is what keeps the schedule across deploys —
-# without it every deploy starts from an empty database.
+# This deliberately uses the free plan so deploying from here can never put a
+# charge on your account. What you give up:
+#
+#   * No persistent disk. The free plan does not allow one, so the database
+#     lives on a temporary filesystem and is wiped whenever the service
+#     restarts. The four locations and their fields are re-seeded on every
+#     start, and setting ADMIN_USERNAME / ADMIN_PASSWORD below means your login
+#     comes back too — but events you entered do NOT survive a restart.
+#   * The service sleeps after about 15 minutes of no traffic. The next visit
+#     wakes it and takes roughly a minute to load.
+#
+# That is fine for showing people the site and deciding whether you want it.
+# When the league starts depending on it, switch to deploy/render-production.yaml,
+# which adds the paid plan and the persistent disk that keeps your schedule.
 services:
   - type: web
     name: jhll-field-scheduler
     runtime: node
-    plan: starter
+    plan: free
     buildCommand: npm install
-    # Seeding runs at start, not at build: the persistent disk is only mounted
-    # at runtime, so a build-time seed would write to a throwaway filesystem.
-    # The seed is insert-only, so repeating it never overwrites your edits.
+    # The seed only ever adds what is missing, so running it on every start is
+    # safe and is what restores the locations on a free-plan restart.
     startCommand: npm run seed && npm start
     healthCheckPath: /healthz
     envVars:
       - key: NODE_ENV
         value: production
-      - key: DATA_DIR
-        value: /data
-      - key: SESSION_SECRET
-        generateValue: true
       - key: TRUST_PROXY_HOPS
         value: "1"
-    disk:
-      name: jhll-data
-      mountPath: /data
-      sizeGB: 1
+      - key: SESSION_SECRET
+        generateValue: true
+      # Set these two in the Render dashboard so your admin login is recreated
+      # after the service restarts. Leave them unset on a paid plan with a disk
+      # and create the account through /admin/setup instead.
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false

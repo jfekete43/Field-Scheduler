@@ -48,32 +48,66 @@ booking one never blocks the other, and every screen shows the location next to 
 
 ---
 
-## Trying it out without installing anything
+## Getting a link to test, before you buy a domain
 
-GitHub does not host this app on its own — GitHub Pages only serves static files,
-and this is a Node server with a database. To get a working link straight from
-GitHub, use a **Codespace**, which runs it on a temporary machine and gives you a
-URL you can open on your phone or send to a board member.
+**GitHub cannot host this one.** GitHub Pages — the `yourname.github.io/project`
+link you may have used on other projects — serves *files*. It hands the browser
+the exact HTML sitting in the repository. It cannot run a program.
+
+This site needs a running program: to check a password when an admin signs in, to
+save a schedule change into the database, and to build the calendar feed. None of
+those exist as a file in the repository, so Pages has nothing to serve.
+
+You have two free ways to get a working link.
+
+### Option 1 — Render (a real, shareable address)
+
+Free, no domain needed, and everything works including the admin login. You get
+an address like `https://jhll-field-scheduler.onrender.com`.
+
+1. Sign up at [render.com](https://render.com) and connect your GitHub account.
+2. **New → Blueprint**, pick this repository, and choose the
+   `claude/jhll-scheduling-site-x0uepa` branch. It reads `render.yaml`, which is
+   set to the **free** plan, so this cannot put a charge on your account.
+3. It will ask for two values. Set `ADMIN_USERNAME` to the login you want and
+   `ADMIN_PASSWORD` to a password of at least 10 characters with a letter and a
+   number. (These exist so your login survives a restart — see below.)
+4. Wait for the first deploy, then open the address Render gives you.
+
+What the free plan costs you: **the schedule does not survive a restart.** Free
+services get no persistent disk and go to sleep after about 15 minutes of no
+traffic, so events you enter will disappear and the first visit after a sleep
+takes about a minute to load. The locations, fields and your admin login are
+recreated automatically, so you can always get back in — but treat anything you
+type in as throwaway.
+
+When the league is ready to rely on it, copy `deploy/render-production.yaml` over
+`render.yaml`, push, and upgrade the plan in Render. That adds the persistent disk
+that keeps your schedule. It costs money — around $7/month at the time of writing.
+A domain name is a separate thing you can add whenever you like; the Render address
+keeps working either way.
+
+### Option 2 — Codespaces (quickest look, private to you)
+
+Runs it on a temporary machine straight from GitHub. Good for a five-minute look,
+not for sharing.
 
 1. Open the repository on github.com and switch to the
    `claude/jhll-scheduling-site-x0uepa` branch (the **Branch** dropdown, above the file list).
-2. Click the green **Code** button → the **Codespaces** tab → **Create codespace on
+2. Green **Code** button → **Codespaces** tab → **Create codespace on
    claude/jhll-scheduling-site-x0uepa**.
 3. Wait a minute or two. It installs everything and starts the site for you.
-4. A box pops up in the bottom-right saying the application is running on port 3000.
+4. A box pops up bottom-right saying the application is running on port 3000.
    Click **Open in Browser**. If you miss it, open the **PORTS** tab next to the
    terminal and click the globe icon on port 3000.
-5. The first time, visit `/admin` on that URL and it will walk you through creating
-   your admin account.
+5. Visit `/admin` on that URL to create your admin account.
 
 The link is private to you by default. To let someone else open it, go to the
 **PORTS** tab, right-click port 3000 → **Port Visibility** → **Public**.
 
-Two things to know: the Codespace shuts down after about 30 minutes of inactivity
-(reopen it from the same Code → Codespaces menu, and your schedule is still there),
-and deleting the Codespace deletes the test data with it. Personal GitHub accounts
-include a monthly allowance of free Codespace hours. When you are ready for a real
-address that stays up, see **Deploying it** below.
+The Codespace sleeps after about 30 minutes idle (reopen it from the same menu and
+your data is still there), and deleting it deletes the test data. Personal GitHub
+accounts include a monthly allowance of free Codespace hours.
 
 ---
 
@@ -181,6 +215,7 @@ Set these environment variables in production:
 | `PORT`           | Port to listen on (default `3000`; most hosts set this for you) |
 | `DATA_DIR`       | Where the database and uploads live (default `./data`) |
 | `TRUST_PROXY_HOPS` | Number of proxies in front of the app. **Defaults to `0`** (trust nothing). Set it to `1` behind nginx, Render or Fly — the included configs already do. |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | Optional. If set, that owner account is recreated at startup when it is missing. Only for hosts with no persistent disk, where a restart wipes the database. On a normal deployment leave these unset and use `/admin/setup`, so no password sits in your config. |
 
 **Serve it over HTTPS.** Passwords and session cookies go over this connection, and secure cookies
 will not be sent over plain HTTP.
@@ -192,10 +227,19 @@ visitor forge their own IP address, which is what the login lockout is keyed on.
 
 ### Render / Railway / Fly.io
 
-Build `npm install`, start `npm start`. Attach a **persistent disk** and point `DATA_DIR` at it —
-`/data` is the usual mount path. Without a persistent disk the schedule is wiped on every deploy.
+Build `npm install`, start `npm run seed && npm start`. Attach a **persistent disk** and point
+`DATA_DIR` at it — `/data` is the usual mount path. Without a persistent disk the schedule is wiped
+every time the service restarts.
 
-`render.yaml` and `fly.toml` are included as starting points.
+Two Render blueprints are included:
+
+| File | Plan | Keeps your schedule? |
+|------|------|----------------------|
+| `render.yaml` (repo root) | free | **No** — for trying it out. See [Getting a link to test](#getting-a-link-to-test-before-you-buy-a-domain). |
+| `deploy/render-production.yaml` | paid, with a 1 GB disk | Yes |
+
+To go to production, copy the second over `render.yaml`, push, and upgrade the plan in the Render
+dashboard. `fly.toml` is set up with a volume and is production-ready as written.
 
 ### Your own server
 
