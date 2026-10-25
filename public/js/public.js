@@ -369,7 +369,14 @@ function renderGroupedByDate() {
       byLocation.get(event.locationId).push(event);
     }
 
-    for (const [, locEvents] of byLocation) {
+    // Locations keep their configured order. Sorting by first start time would
+    // float a site to the top just because it has an all-day block on it.
+    const order = new Map(state.boot.locations.map((loc, i) => [loc.id, i]));
+    const ordered = [...byLocation.entries()].sort(
+      (a, b) => (order.get(a[0]) ?? 99) - (order.get(b[0]) ?? 99)
+    );
+
+    for (const [, locEvents] of ordered) {
       const first = locEvents[0];
       const group = h('div', { class: 'loc-group' },
         h('div', { class: 'loc-group-head' },
