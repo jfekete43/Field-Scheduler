@@ -473,6 +473,66 @@ check('but ends it on your other devices', !after.includes('sid-drop'));
 
 /* ---------------------------------------------------------------- */
 
+section('Timeline layout');
+
+const tl = require('../public/js/timeline.js');
+
+check('a time becomes minutes', tl.tlMinutes('13:30') === 810 && tl.tlMinutes('00:00') === 0);
+check('an hour reads as a label', tl.tlLabel(8 * 60) === '8am' && tl.tlLabel(13 * 60) === '1pm');
+check('noon and midnight read correctly', tl.tlLabel(12 * 60) === '12pm' && tl.tlLabel(0) === '12am');
+check('a half hour keeps its minutes', tl.tlLabel(9 * 60 + 30) === '9:30');
+
+// The window covers the day's bookings, widening past the default when needed.
+const quiet = tl.tlRange([{ startTime: '10:00', endTime: '12:00' }]);
+check('a quiet day uses the default window', quiet.start === 480 && quiet.end === 1260);
+
+const early = tl.tlRange([{ startTime: '06:15', endTime: '08:00' }]);
+check('an early game widens the window', early.start === 360);
+
+const late = tl.tlRange([{ startTime: '20:00', endTime: '22:30' }]);
+check('a late game widens the other end', late.end >= 1350);
+
+check('an all-day block does not stretch the window',
+  tl.tlRange([{ allDay: true, startTime: '00:00', endTime: '23:59' }]).start === 480);
+
+// Back-to-back bookings share one lane; overlapping ones stack.
+const backToBack = tl.tlLanes([
+  { startTime: '08:00', endTime: '09:30' },
+  { startTime: '09:45', endTime: '11:15' },
+  { startTime: '11:30', endTime: '13:00' },
+]);
+check('games that do not overlap share one row', backToBack.length === 1);
+check('and stay in order', backToBack[0].length === 3);
+
+const abutting = tl.tlLanes([
+  { startTime: '09:00', endTime: '10:00' },
+  { startTime: '10:00', endTime: '11:00' },
+]);
+check('a game starting as another ends shares the row', abutting.length === 1);
+
+const overlapping = tl.tlLanes([
+  { startTime: '09:00', endTime: '11:00' },
+  { startTime: '10:00', endTime: '12:00' },
+]);
+check('a double-booking stacks into two rows', overlapping.length === 2);
+
+const threeDeep = tl.tlLanes([
+  { startTime: '09:00', endTime: '12:00' },
+  { startTime: '09:30', endTime: '11:00' },
+  { startTime: '10:00', endTime: '10:30' },
+]);
+check('three at once stack three deep', threeDeep.length === 3);
+
+const mixed = tl.tlLanes([
+  { startTime: '09:00', endTime: '11:00' },
+  { startTime: '10:00', endTime: '12:00' },
+  { startTime: '12:30', endTime: '13:30' },
+]);
+check('a later gap reuses the first row', mixed.length === 2 && mixed[0].length === 2);
+
+check('out-of-order input is sorted first',
+  tl.tlLanes([{ startTime: '13:00', endTime: '14:00' }, { startTime: '09:00', endTime: '10:00' }])[0][0].startTime === '09:00');
+
 section('Rain out (over HTTP)');
 
 async function rainoutTests() {

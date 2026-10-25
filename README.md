@@ -12,6 +12,8 @@ changes.
 **For families (no login):**
 
 - Day, week and "next 60 days" views of every game, practice and cage session
+- A **Fields** view laid out like a TV guide: every field is a row, time runs across the top, and
+  you slide sideways through the day. The gaps between bookings are the times a field is free
 - Filter by location, field, event type, division, or a search for a team name
 - A **Directions** button for every site that opens Google Maps
 - A **Field Map** button that shows an uploaded site map with a label on each field
@@ -168,6 +170,18 @@ once and tells you if any individual date had to be skipped because the field wa
 Repeat is only offered when adding a new event. Editing one changes just that date, so fixing a
 single rained-out practice never disturbs the rest of the series. To remove the rest of a series,
 use the **Series** button on any of its rows.
+
+### Seeing what a field has on, and where the gaps are
+
+**Fields** (next to Day and Week) lays the day out like a TV guide. Each field is a row, time runs
+across the top, and you slide sideways to move through the day. Back-to-back games appear as a run
+of blocks, and the spaces between them are the times that field is open. A double-booking stacks
+into two rows so neither one hides the other, and a line marks the current time when you are
+looking at today.
+
+The admin console has the same view under **Schedule → Fields**, with one addition: **clicking an
+empty stretch starts a booking** on that field at that time, with the field, date and start time
+already filled in. Clicking an existing block opens it for editing.
 
 ### Blocking a field for a whole day
 

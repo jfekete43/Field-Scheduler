@@ -12,6 +12,8 @@ const admin = {
   mapEditor: null,   // { location, pins, selectedIndex }
   requestId: 0,      // guards against a slow earlier fetch landing last
   rainout: { date: '', events: [], selected: new Set(), loading: false, token: 0 },
+  scheduleView: 'list',   // 'list' or 'timeline'
+  timelineDate: '',       // the single day the timeline shows
 };
 
 /**
@@ -263,6 +265,17 @@ function wireSchedule() {
     loadEvents();
   });
 
+  $$('[data-admin-view]').forEach((btn) => {
+    btn.addEventListener('click', () => setScheduleView(btn.dataset.adminView));
+  });
+
+  $('#btn-tl-prev').addEventListener('click', () => shiftTimeline(-1));
+  $('#btn-tl-next').addEventListener('click', () => shiftTimeline(1));
+  $('#btn-tl-today').addEventListener('click', () => {
+    admin.timelineDate = admin.boot.today;
+    loadEvents();
+  });
+
   $('#btn-new-event').addEventListener('click', () => openEventEditor(null));
   $('#event-form').addEventListener('submit', saveEvent);
   $('#btn-delete-event').addEventListener('click', deleteCurrentEvent);
@@ -484,8 +497,17 @@ async function submitRainout(event) {
 
 async function loadEvents() {
   const params = new URLSearchParams();
-  if (admin.filters.from) params.set('from', admin.filters.from);
-  if (admin.filters.to) params.set('to', admin.filters.to);
+  const timeline = admin.scheduleView === 'timeline';
+
+  if (timeline) {
+    const date = admin.timelineDate || admin.boot.today;
+    admin.timelineDate = date;
+    params.set('from', date);
+    params.set('to', date);
+  } else {
+    if (admin.filters.from) params.set('from', admin.filters.from);
+    if (admin.filters.to) params.set('to', admin.filters.to);
+  }
   if (admin.filters.location) params.set('location', admin.filters.location);
   if (admin.filters.field) params.set('field', admin.filters.field);
   if (admin.filters.type) params.set('type', admin.filters.type);
@@ -518,7 +540,7 @@ function renderStats() {
   const locationCount = new Set(events.map((e) => e.locationId)).size;
 
   [
-    ['In range', events.length],
+    [admin.scheduleView === 'timeline' ? 'That day' : 'In range', events.length],
     ['Games', games],
     ['Cage sessions', cage],
     ['Not playing', off],
@@ -530,7 +552,51 @@ function renderStats() {
   });
 }
 
+function setScheduleView(view) {
+  if (admin.scheduleView === view) return;
+  admin.scheduleView = view;
+  $$('[data-admin-view]').forEach((b) =>
+    b.setAttribute('aria-pressed', String(b.dataset.adminView === view)));
+  $('#admin-day-nav').hidden = view !== 'timeline';
+  if (view === 'timeline' && !admin.timelineDate) {
+    admin.timelineDate = admin.filters.from || admin.boot.today;
+  }
+  loadEvents();
+}
+
+function shiftTimeline(direction) {
+  admin.timelineDate = addDays(admin.timelineDate || admin.boot.today, direction);
+  loadEvents();
+}
+
+/** The timeline shows one day, so it asks for that day rather than the range. */
+function renderAdminTimeline() {
+  const root = clear($('#admin-schedule-root'));
+  const date = admin.timelineDate;
+  $('#tl-date-label').textContent = formatDateLong(date);
+
+  renderTimeline(root, {
+    events: admin.events,
+    locations: admin.boot.locations,
+    date,
+    today: admin.boot.today,
+    labels: admin.boot.eventTypes,
+    onEventClick: (event) => openEventEditor(event),
+    onEmptyClick: (field, location, time) => {
+      const endHour = String(Math.min(23, Number(time.slice(0, 2)) + 2)).padStart(2, '0');
+      openEventEditor(null, {
+        date,
+        fieldId: field.id,
+        startTime: time,
+        endTime: `${endHour}:${time.slice(3)}`,
+      });
+    },
+  });
+}
+
 function renderAdminSchedule() {
+  if (admin.scheduleView === 'timeline') return renderAdminTimeline();
+
   const root = clear($('#admin-schedule-root'));
 
   if (!admin.events.length) {
@@ -684,11 +750,11 @@ function openEventEditor(event, defaults = {}) {
   $('#e-repeat-until').value = '';
   clear($('#repeat-summary'));
 
-  $('#e-field').value = source.fieldId ? String(source.fieldId) : '';
+  $('#e-field').value = String(source.fieldId || defaults.fieldId || '');
   $('#e-type').value = source.eventType || 'game';
   $('#e-date').value = source.date || defaults.date || admin.filters.from || admin.boot.today;
-  $('#e-start').value = source.startTime || '17:30';
-  $('#e-end').value = source.endTime || '19:30';
+  $('#e-start').value = source.startTime || defaults.startTime || '17:30';
+  $('#e-end').value = source.endTime || defaults.endTime || '19:30';
   $('#e-division').value = source.division || '';
   $('#e-home').value = source.homeTeam || '';
   $('#e-away').value = source.awayTeam || '';

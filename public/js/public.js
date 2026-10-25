@@ -153,7 +153,7 @@ function rebuildFieldOptions() {
 function applyStateFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const view = params.get('view');
-  state.view = ['day', 'week', 'upcoming'].includes(view) ? view : 'day';
+  state.view = ['day', 'timeline', 'week', 'upcoming'].includes(view) ? view : 'day';
 
   const date = params.get('date');
   state.anchor = /^\d{4}-\d{2}-\d{2}$/.test(date || '') ? date : state.today;
@@ -223,7 +223,9 @@ function shift(direction) {
 /* ---------------- Fetching ---------------- */
 
 function currentRange() {
-  if (state.view === 'day') return { from: state.anchor, to: state.anchor };
+  if (state.view === 'day' || state.view === 'timeline') {
+    return { from: state.anchor, to: state.anchor };
+  }
   if (state.view === 'week') {
     const from = startOfWeek(state.anchor);
     return { from, to: addDays(from, 6) };
@@ -266,14 +268,15 @@ async function loadEvents() {
 
 function updateDateLabel(range) {
   const label = $('#date-label');
-  if (state.view === 'day') label.textContent = formatDateLong(range.from);
+  if (state.view === 'day' || state.view === 'timeline') label.textContent = formatDateLong(range.from);
   else if (state.view === 'week') label.textContent = formatRangeLabel(range.from, range.to);
   else label.textContent = '';
 
   const title = $('#schedule-title');
   title.textContent =
     state.view === 'upcoming' ? `Next ${UPCOMING_DAYS} Days` :
-    state.view === 'week' ? 'Week Schedule' : 'Daily Schedule';
+    state.view === 'week' ? 'Week Schedule' :
+    state.view === 'timeline' ? 'Field by Field' : 'Daily Schedule';
 }
 
 function renderChips() {
@@ -331,8 +334,34 @@ function render() {
     root.append(emptyState());
     return;
   }
-  if (state.view === 'week') root.append(renderWeek());
-  else root.append(renderGroupedByDate());
+  if (state.view === 'timeline') {
+    renderTimeline(root, {
+      events: state.events,
+      locations: state.boot.locations,
+      date: state.anchor,
+      today: state.today,
+      labels: state.boot.eventTypes,
+      onEventClick: showEvent,
+    });
+    root.append(timelineLegend());
+  } else if (state.view === 'week') {
+    root.append(renderWeek());
+  } else {
+    root.append(renderGroupedByDate());
+  }
+}
+
+/** A small key to the block colours. */
+function timelineLegend() {
+  const shown = ['game', 'practice', 'cage', 'tournament'];
+  return h('div', { class: 'tl-legend' },
+    shown.map((type) => {
+      const swatch = h('span', { class: `tl-swatch type-${type}` });
+      return h('span', { class: 'tl-legend-item' },
+        swatch, labelFor(state.boot.eventTypes, type));
+    }),
+    h('span', { class: 'tl-legend-item', style: 'margin-left:auto' },
+      'Scroll sideways for later in the day'));
 }
 
 function emptyState() {
