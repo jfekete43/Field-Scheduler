@@ -12,7 +12,7 @@ const admin = {
   mapEditor: null,   // { location, pins, selectedIndex }
   requestId: 0,      // guards against a slow earlier fetch landing last
   rainout: { date: '', events: [], selected: new Set(), loading: false, token: 0 },
-  scheduleView: 'list',   // 'list' or 'timeline'
+  scheduleView: 'timeline',   // 'timeline' or 'list'
   timelineDate: '',       // the single day the timeline shows
 };
 
@@ -59,6 +59,9 @@ async function init() {
   admin.filters.to = addDays(today, 30);
   $('#a-from').value = admin.filters.from;
   $('#a-to').value = admin.filters.to;
+
+  admin.timelineDate = admin.boot.today;
+  applyScheduleViewChrome();
 
   wireTabs();
   wireSchedule();
@@ -555,13 +558,25 @@ function renderStats() {
 function setScheduleView(view) {
   if (admin.scheduleView === view) return;
   admin.scheduleView = view;
+  applyScheduleViewChrome();
+  loadEvents();
+}
+
+/** The two views need different controls, so show only the ones that apply. */
+function applyScheduleViewChrome() {
+  const view = admin.scheduleView;
   $$('[data-admin-view]').forEach((b) =>
     b.setAttribute('aria-pressed', String(b.dataset.adminView === view)));
-  $('#admin-day-nav').hidden = view !== 'timeline';
-  if (view === 'timeline' && !admin.timelineDate) {
+
+  const timeline = view === 'timeline';
+  $('#admin-day-nav').hidden = !timeline;
+  // The timeline has its own day arrows, so a From/To range would contradict it.
+  $('#field-a-from').hidden = timeline;
+  $('#field-a-to').hidden = timeline;
+
+  if (timeline && !admin.timelineDate) {
     admin.timelineDate = admin.filters.from || admin.boot.today;
   }
-  loadEvents();
 }
 
 function shiftTimeline(direction) {

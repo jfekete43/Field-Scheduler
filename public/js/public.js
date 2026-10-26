@@ -2,7 +2,9 @@
 'use strict';
 
 const state = {
-  view: 'day',
+  // Fields is the landing view: on a day with anything on it, seeing which
+  // field is busy and where the gaps are answers more questions than a list.
+  view: 'timeline',
   anchor: null,          // YYYY-MM-DD
   today: null,
   filters: { location: '', field: '', type: '', division: '', q: '' },
@@ -161,7 +163,7 @@ function rebuildFieldOptions() {
 function applyStateFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const view = params.get('view');
-  state.view = ['day', 'timeline', 'week', 'upcoming'].includes(view) ? view : 'day';
+  state.view = ['day', 'timeline', 'week', 'upcoming'].includes(view) ? view : 'timeline';
 
   const date = params.get('date');
   state.anchor = /^\d{4}-\d{2}-\d{2}$/.test(date || '') ? date : state.today;
@@ -201,7 +203,7 @@ function applyStateFromUrl() {
 
 function syncUrl() {
   const params = new URLSearchParams();
-  if (state.view !== 'day') params.set('view', state.view);
+  if (state.view !== 'timeline') params.set('view', state.view);
   if (state.view !== 'upcoming' && state.anchor !== state.today) params.set('date', state.anchor);
   for (const [key, value] of Object.entries(state.filters)) {
     if (value) params.set(key, value);

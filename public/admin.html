@@ -51,11 +51,11 @@
         </div>
 
         <div class="filters" style="margin-bottom:14px">
-          <div class="field">
+          <div class="field" id="field-a-from">
             <label class="lbl" for="a-from">From</label>
             <input type="date" id="a-from">
           </div>
-          <div class="field">
+          <div class="field" id="field-a-to">
             <label class="lbl" for="a-to">To</label>
             <input type="date" id="a-to">
           </div>
@@ -80,10 +80,10 @@
 
         <div class="toolbar-row" style="margin-bottom:12px">
           <div class="segmented" role="group" aria-label="How to show the schedule">
-            <button type="button" data-admin-view="list" aria-pressed="true">List</button>
-            <button type="button" data-admin-view="timeline" aria-pressed="false">Fields</button>
+            <button type="button" data-admin-view="timeline" aria-pressed="true">Fields</button>
+            <button type="button" data-admin-view="list" aria-pressed="false">List</button>
           </div>
-          <div class="date-nav" id="admin-day-nav" hidden>
+          <div class="date-nav" id="admin-day-nav">
             <button class="btn btn-icon" type="button" id="btn-tl-prev" aria-label="Previous day">&#8249;</button>
             <span class="date-label" id="tl-date-label">&nbsp;</span>
             <button class="btn btn-icon" type="button" id="btn-tl-next" aria-label="Next day">&#8250;</button>
