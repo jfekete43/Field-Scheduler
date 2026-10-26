@@ -240,6 +240,10 @@ select { cursor: pointer; appearance: none; background-image: linear-gradient(45
 
 .spacer { flex: 1 1 auto; }
 
+/* The Filters toggle only exists on narrow screens, where the toolbar has to
+   stay short enough to remain pinned. */
+#btn-filters { display: none; }
+
 .chip-row { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
 
 .chip {
@@ -986,7 +990,24 @@ input[type="file"] { font-size: 13.5px; }
   .loc-card-actions { grid-template-columns: 1fr; }
   .detail-row { grid-template-columns: 1fr; gap: 2px; }
   .modal-body { padding: 15px; }
-  .toolbar { position: static; }
+
+  /* The toolbar stays pinned so the view switcher is always one tap away,
+     even part-way down a thirty-game Saturday. The filters fold away behind
+     a button to keep that pinned bar short. */
+  .toolbar { padding: 9px 0; }
+  .toolbar .segmented button { padding: 6px 10px; font-size: 13px; }
+  #btn-filters { display: inline-flex; }
+  #btn-print { display: none; }
+  /* Two lines, not three: the switcher and Filters share the first, and the
+     date nav takes the second on its own (it stretches to full width so the
+     date sits centred between the arrows). */
+  .toolbar .spacer { display: none; }
+  .toolbar-row + .toolbar-row { margin-top: 7px; }
+  .toolbar .toolbar-row:first-child { row-gap: 7px; }
+  #btn-filters { order: 1; }
+  .toolbar .date-nav { order: 2; }
+  .toolbar.filters-collapsed .toolbar-row.filters { display: none; }
+  #btn-filters[aria-expanded="true"] { background: var(--navy-600); border-color: var(--navy-600); color: #fff; }
 }
 
 /* ---------- Print ---------- */

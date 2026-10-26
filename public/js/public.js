@@ -56,6 +56,14 @@ function wireControls() {
   });
 
   $('#btn-print').addEventListener('click', () => window.print());
+
+  // On a phone the filters fold away so the view switcher can stay pinned.
+  $('.toolbar').classList.add('filters-collapsed');
+  $('#btn-filters').addEventListener('click', () => {
+    const toolbar = $('.toolbar');
+    const open = toolbar.classList.toggle('filters-collapsed') === false;
+    $('#btn-filters').setAttribute('aria-expanded', String(open));
+  });
   $('#btn-subscribe').addEventListener('click', openSubscribe);
 
   const onFilterChange = () => {
@@ -296,6 +304,11 @@ function renderChips() {
   if (state.filters.type) active.push({ key: 'type', text: labelFor(eventTypes, state.filters.type) });
   if (state.filters.division) active.push({ key: 'division', text: state.filters.division });
   if (state.filters.q) active.push({ key: 'q', text: `"${state.filters.q}"` });
+
+  const button = $('#btn-filters');
+  if (button) {
+    button.textContent = active.length ? `Filters (${active.length})` : 'Filters';
+  }
 
   wrap.hidden = active.length === 0;
   if (!active.length) return;
