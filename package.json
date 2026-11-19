@@ -14,7 +14,8 @@
     "seed": "node scripts/seed.js",
     "create-admin": "node scripts/create-admin.js",
     "reset-password": "node scripts/reset-password.js",
-    "test": "node scripts/test.js"
+    "test": "node scripts/test.js",
+    "build:demo": "node scripts/build-demo.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

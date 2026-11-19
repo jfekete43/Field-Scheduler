@@ -55,17 +55,46 @@ booking one never blocks the other, and every screen shows the location next to 
 
 ## Getting a link to test, before you buy a domain
 
-**GitHub cannot host this one.** GitHub Pages — the `yourname.github.io/project`
-link you may have used on other projects — serves *files*. It hands the browser
-the exact HTML sitting in the repository. It cannot run a program.
+GitHub Pages — the `yourname.github.io/project` link you may have used on other
+projects — serves *files*. It hands the browser the exact HTML sitting in the
+repository, and cannot run a program.
 
-This site needs a running program: to check a password when an admin signs in, to
-save a schedule change into the database, and to build the calendar feed. None of
-those exist as a file in the repository, so Pages has nothing to serve.
+The real site needs a running program: to check a password when an admin signs
+in, to save a schedule change into the database, and to build the calendar feed.
+So Pages cannot host the real site — but it can host a demo of it, and this
+repository ships one. For the real thing, with logins and a schedule that sticks,
+you need somewhere that runs Node.
 
-You have two free ways to get a working link.
+You have three free ways to get a working link.
 
-### Option 1 — Render (a real, shareable address)
+### Option 1 — GitHub Pages (a demo anyone can click, already set up)
+
+The repository root holds `index.html`: a **self-contained demo** that runs the real front-end code
+— the same stylesheet, markup and JavaScript the live site uses — against a stand-in for the server
+written in JavaScript, loaded with a sample season. No Node process, no database, so GitHub Pages
+can serve it as an ordinary file.
+
+With Pages pointed at this branch and the `/ (root)` folder, it is live at
+`https://<your-username>.github.io/Field-Scheduler/` within a minute of each push.
+
+Good for: showing the board what the site looks like, on any phone, with nothing to install and no
+account to create. Both the public schedule and the admin console work, including booking by
+clicking an empty slot.
+
+Not the real thing: there is no server behind it, so **nothing is saved** — changes live in the
+viewer's browser until they reload, and every visitor starts from the same sample data. There is no
+real login either; the admin console is simply open, because there is nothing to protect.
+
+> **A Pages URL is public to the whole internet.** That is fine for invented teams called the
+> Mudcats. Never point Pages at anything holding real schedules, family names or contact details.
+
+Rebuild it after changing anything under `public/`, or the demo drifts from the real site:
+
+```bash
+npm run build:demo
+```
+
+### Option 2 — Render (a real, shareable address)
 
 Free, no domain needed, and everything works including the admin login. You get
 an address like `https://jhll-field-scheduler.onrender.com`.
@@ -92,7 +121,7 @@ that keeps your schedule. It costs money — around $7/month at the time of writ
 A domain name is a separate thing you can add whenever you like; the Render address
 keeps working either way.
 
-### Option 2 — Codespaces (quickest look, private to you)
+### Option 3 — Codespaces (the real app, private to you)
 
 Runs it on a temporary machine straight from GitHub. Good for a five-minute look,
 not for sharing.
@@ -362,6 +391,11 @@ scripts/
   create-admin.js  create an account from the command line
   reset-password.js
 data/               created at runtime — database and uploads (never committed)
+
+index.html          generated demo for GitHub Pages — npm run build:demo
+scripts/
+  build-demo.js     builds it out of the real front-end code
+  demo/demo-api.js  in-browser stand-in for the server, plus the sample season
 ```
 
 No build step, no bundler. Edit a file, restart, done.
